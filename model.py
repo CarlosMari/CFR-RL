@@ -7,17 +7,63 @@ import inspect
 import numpy as np
 import tensorflow as tf
 
-class Network():
+
+class Network:
+    """
+    A class used to represents tf2 neural network
+
+    ...
+
+    Attributes
+    ----------
+    config : str
+        a formatted string to print out what the animal says
+    input_dims : str
+        the name of the animal
+    action_dim : str
+        the sound that the animal makes
+    max_moves : int
+        the number of legs the animal has (default 4)
+    master  : boolean = True
+
+    Methods
+    -------
+    create_actor_critic_model(config)
+        Creates a actor-critic network using the config parameters
+
+    create_policy_model(config)
+        Creates a policy network using the config paramentes
+
+    value_loss_fn(rewards,values)
+        Calculates the value loss for a RL agent.
+        This function computes the value loss, which measures the error between the estimated
+        state values and the actual rewards received.
+
+    policy_loss_fn(logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12)
+        Calculate the policy loss for a RL agent.
+        Computer the policy loss, measures the error between the agent's policy (action,probabilities)
+        and the advantages it gains from its actions. Also includes entropy to encourage exploration
+
+
+    actor_critic_train(inputs, actions, rewards, entropy_weight=0.01)
+        Trains the actor critic network
+
+    policy_train(self, inputs, actions, advantages, entropy_weight=0.01):
+        Trains the policy network
+
+
+
+    """
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
         self.input_dims = input_dims
         self.action_dim = action_dim
         self.max_moves = max_moves
-        self.model_name = config.version+'-'\
-                            +config.project_name+'_'\
-                            +config.method+'_'\
-                            +config.model_type+'_'\
-                            +config.topology_file+'_'\
-                            +config.traffic_file
+        self.model_name = config.version + '-' \
+                          + config.project_name + '_' \
+                          + config.method + '_' \
+                          + config.model_type + '_' \
+                          + config.topology_file + '_' \
+                          + config.traffic_file
 
         if config.method == 'actor_critic':
             self.create_actor_critic_model(config)
@@ -25,10 +71,10 @@ class Network():
             self.create_policy_model(config)
 
         self.lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-                config.initial_learning_rate,
-                config.learning_rate_decay_step,
-                config.learning_rate_decay_rate,
-                staircase=True)
+            config.initial_learning_rate,
+            config.learning_rate_decay_step,
+            config.learning_rate_decay_rate,
+            staircase=True)
 
         if config.optimizer == 'RMSprop':
             if config.method == 'actor_critic':
@@ -42,24 +88,25 @@ class Network():
                 self.critic_optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_schedule)
             elif config.method == 'pure_policy':
                 self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.lr_schedule)
-        
+
         if master:
             if config.method == 'actor_critic':
-                self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), actor_optimizer=self.actor_optimizer, critic_optimizer=self.critic_optimizer, model=self.model)
+                self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), actor_optimizer=self.actor_optimizer,
+                                                critic_optimizer=self.critic_optimizer, model=self.model)
             elif config.method == 'pure_policy':
                 self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=self.optimizer, model=self.model)
-            self.ckpt_dir = './tf_ckpts/'+self.model_name
+            self.ckpt_dir = './tf_ckpts/' + self.model_name
             self.manager = tf.train.CheckpointManager(self.ckpt, self.ckpt_dir, max_to_keep=config.max_to_keep)
             self.writer = tf.compat.v2.summary.create_file_writer('./logs/%s' % self.model_name)
-            #self.save_hyperparams(config)
+            # self.save_hyperparams(config)
             self.model.summary()
 
     def create_actor_critic_model(self, config):
         tf.keras.backend.set_floatx('float32')
         inputs = tf.keras.Input(shape=(self.input_dims[0], self.input_dims[1], self.input_dims[2]))
-       
+
         # Actor
-        Conv2D_1 = tf.keras.layers.Conv2D(config.Conv2D_out, 3, padding='same') 
+        Conv2D_1 = tf.keras.layers.Conv2D(config.Conv2D_out, 3, padding='same')
         x_1 = Conv2D_1(inputs)
         x_1 = tf.keras.layers.LeakyReLU()(x_1)
         x_1 = tf.keras.layers.Flatten()(x_1)
@@ -68,12 +115,12 @@ class Network():
         x_1 = tf.keras.layers.LeakyReLU()(x_1)
         Dense2_1 = tf.keras.layers.Dense(self.action_dim)
         logits = Dense2_1(x_1)
-        #Logit clipping
+        # Logit clipping
         if config.logit_clipping > 0:
-            logits = config.logit_clipping*tf.keras.activations.tanh(logits)
+            logits = config.logit_clipping * tf.keras.activations.tanh(logits)
 
         # Critic
-        Conv2D_2 = tf.keras.layers.Conv2D(config.Conv2D_out, 3, padding='same') 
+        Conv2D_2 = tf.keras.layers.Conv2D(config.Conv2D_out, 3, padding='same')
         x_2 = Conv2D_2(inputs)
         x_2 = tf.keras.layers.LeakyReLU()(x_2)
         x_2 = tf.keras.layers.Flatten()(x_2)
@@ -91,7 +138,7 @@ class Network():
     def create_policy_model(self, config):
         tf.keras.backend.set_floatx('float32')
         inputs = tf.keras.Input(shape=(self.input_dims[0], self.input_dims[1], self.input_dims[2]))
-        
+
         Conv2D_1 = tf.keras.layers.Conv2D(config.Conv2D_out, 3, padding='same')
         x_1 = Conv2D_1(inputs)
         x_1 = tf.keras.layers.LeakyReLU()(x_1)
@@ -112,15 +159,17 @@ class Network():
         return value_loss, advantages
 
     def policy_loss_fn(self, logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12):
-        actions = tf.reshape(actions, [-1, self.max_moves, self.action_dim])                            #actions shape = [batch_size, max_moves, action_dim]
-        policy = tf.nn.softmax(logits)                                                                  #policy shape = [batch_size, action_dim]
-        assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]                  
-        entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)                 #entropy shape = [batch_size,]
-        entropy = tf.expand_dims(entropy, -1)                                                           #[batch_size, 1]
-        policy = tf.expand_dims(policy, -1)                                                             #policy shape = [batch_size, action_dim, 1]
-        policy_loss = tf.math.log(tf.maximum(tf.squeeze(tf.matmul(actions, policy)), log_epsilon))      #[batch_size, max_moves]
-        policy_loss = tf.reduce_sum(policy_loss, 1, keepdims=True)                                      #[batch_size, 1]
-        policy_loss = tf.multiply(policy_loss, tf.stop_gradient(-advantages))                           #[batch_size, 1]
+        actions = tf.reshape(actions, [-1, self.max_moves,
+                                       self.action_dim])  # actions shape = [batch_size, max_moves, action_dim]
+        policy = tf.nn.softmax(logits)  # policy shape = [batch_size, action_dim]
+        assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
+        entropy = tf.nn.softmax_cross_entropy_with_logits(labels=policy, logits=logits)  # entropy shape = [batch_size,]
+        entropy = tf.expand_dims(entropy, -1)  # [batch_size, 1]
+        policy = tf.expand_dims(policy, -1)  # policy shape = [batch_size, action_dim, 1]
+        policy_loss = tf.math.log(
+            tf.maximum(tf.squeeze(tf.matmul(actions, policy)), log_epsilon))  # [batch_size, max_moves]
+        policy_loss = tf.reduce_sum(policy_loss, 1, keepdims=True)  # [batch_size, 1]
+        policy_loss = tf.multiply(policy_loss, tf.stop_gradient(-advantages))  # [batch_size, 1]
         policy_loss -= entropy_weight * entropy
         policy_loss = tf.reduce_sum(policy_loss)
 
@@ -144,7 +193,7 @@ class Network():
         self.actor_optimizer.apply_gradients(zip(actor_gradients, self.actor_model.trainable_variables))
 
         return value_loss, entropy, actor_gradients, critic_gradients
-    
+
     @tf.function
     def policy_train(self, inputs, actions, advantages, entropy_weight=0.01):
         # Tracks the variables involved in computing the loss by using tf.GradientTape
@@ -167,7 +216,7 @@ class Network():
     @tf.function
     def critic_predict(self, inputs):
         critic_outputs = self.critic_model(inputs, training=False)
-        
+
         return critic_outputs
 
     @tf.function
@@ -181,7 +230,7 @@ class Network():
         if checkpoint == '':
             checkpoint = self.manager.latest_checkpoint
         else:
-            checkpoint = self.ckpt_dir+'/'+checkpoint
+            checkpoint = self.ckpt_dir + '/' + checkpoint
 
         self.ckpt.restore(checkpoint).expect_partial()
         if checkpoint:
@@ -207,8 +256,8 @@ class Network():
     def save_hyperparams(self, config):
         fp = self.ckpt_dir + '/hyper_parameters'
 
-        hparams = {k:v for k, v in inspect.getmembers(config)
-            if not k.startswith('__') and not callable(k)}
+        hparams = {k: v for k, v in inspect.getmembers(config)
+                   if not k.startswith('__') and not callable(k)}
 
         if os.path.exists(fp):
             f = open(fp, 'r')
@@ -217,8 +266,8 @@ class Network():
                 idx = line.find('=')
                 if idx == -1:
                     continue
-                k = line[:idx-1]
-                v = line[idx+2:-1]
+                k = line[:idx - 1]
+                v = line[idx + 2:-1]
                 if v != str(hparams[k]):
                     match = False
                     print('[!] Unmatched hyperparameter:', k, v, hparams[k])
@@ -226,7 +275,7 @@ class Network():
             f.close()
             if match:
                 return
-            
+
             f = open(fp, 'a')
         else:
             if not os.path.exists(self.ckpt_dir):

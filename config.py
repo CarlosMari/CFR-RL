@@ -1,4 +1,7 @@
 class NetworkConfig(object):
+  """
+  Contains the necessary parameters/hyperparameters of the NN.
+  """
   scale = 100
 
   max_step = 1000 * scale

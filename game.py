@@ -9,7 +9,50 @@ from pulp import LpMinimize, LpMaximize, LpProblem, LpStatus, lpSum, LpVariable,
 
 OBJ_EPSILON = 1e-12
 
+
 class Game(object):
+    """
+        Game class that simulates the network
+
+        Parameters:
+            config: The configuration provided in the file
+            env:  The created enviroment
+            random_seed = 1000 : a parameter to randomize the state.
+
+        Methods:
+            generate_inputs(normalization=True)
+                Generate input data for a matrix prediction model.
+                Prepares input data via creating normalized or unnormalized traffic matrices
+                based on historic data.
+
+            get_topK_flows(tm_index, pairs)
+                Get the top-K flows in a matrix at a given index
+
+            get_ecmp_next_hops()
+                Compute the Equal-Cost Multipath (ECMP) next hops for each source-destination pair.
+
+            ecmp_next_hop_distribution(link_loads, demand, src, dst):
+                Distribute demand evenly across ECMP next hops between source and destination
+
+            eval_ecmp_traffic_distribution(tm_idx, eval_delay=False):
+
+            get_critical_topK_flows(tm_idx, critical_links=5):
+
+            eval_ecmp_traffic_distribution(tm_idx, eval_delay=False):
+
+            optimal_routing_mlu(tm_idx):
+
+            eval_optimal_routing_mlu(tm_idx, solution, eval_delay=False):
+
+            optimal_routing_mlu_critical_pairs(tm_idx, critical_pairs):
+
+            eval_critical_flow_and_ecmp(tm_idx, critical_pairs, solution, eval_delay=False):
+
+            optimal_routing_delay(tm_idx)
+
+            eval_optimal_routing_delay(self, tm_idx, solution):
+    """
+
     def __init__(self, config, env, random_seed=1000):
         self.random_state = np.random.RandomState(seed=random_seed)
  
@@ -91,7 +134,7 @@ class Game(object):
         #if next_hops_cnt > 1:
             #print(self.shortest_paths_node[self.pair_sd_to_idx[(src, dst)]])
 
-        ecmp_demand = demand / next_hops_cnt 
+        ecmp_demand = demand / next_hops_cnt
         for np in ecmp_next_hops:
             link_loads[self.link_sd_to_idx[(src, np)]] += ecmp_demand
             self.ecmp_next_hop_distribution(link_loads, ecmp_demand, np, dst)
@@ -127,7 +170,7 @@ class Game(object):
     def eval_ecmp_traffic_distribution(self, tm_idx, eval_delay=False):
         eval_link_loads = self.ecmp_traffic_distribution(tm_idx)
         eval_max_utilization = np.max(eval_link_loads / self.link_capacities)
-        self.load_multiplier[tm_idx] = 0.9 / eval_max_utilization
+        self.load_multiplier[tm_idx] = 0.9 / eval_max_utilization  # Where does 0.9 come from?
         delay = 0
         if eval_delay:
             eval_link_loads *= self.load_multiplier[tm_idx]
@@ -198,10 +241,24 @@ class Game(object):
         return optimal_max_utilization, delay
 
     def optimal_routing_mlu_critical_pairs(self, tm_idx, critical_pairs):
+        """
+        Calculate the Maximum Link Utilization (MLU) and routing solution for critical flow pairs in the network
+
+        Optimally routes the traffic flow associated with critical flow pairs in the network's traffic matrix
+        to minimize MLU while ensuring flow conservation.
+
+        :param tm_idx (int): The index of the traffic matrix
+        :param critical_pairs (list of int): A list of indices representing critical flow pairs to optimize routing for
+        :return:
+            - obj_r (float): The calculated MLU for the optimized routing
+            - solution (dict) A dictionary representing the optimized routing solution
+        """
+
         tm = self.traffic_matrices[tm_idx]
 
         pairs = critical_pairs
 
+        # If the flow is critical it gets inserted into demands
         demands = {}
         background_link_loads = np.zeros((self.num_links))
         for i in range(self.num_pairs):
@@ -212,6 +269,7 @@ class Game(object):
             else:
                 demands[i] = tm[s][d]
 
+        # Initializes a Linear Programming problem ?
         model = LpProblem(name="routing")
         
         pair_links = [(pr, e[0], e[1]) for pr in pairs for e in self.lp_links] 
@@ -221,24 +279,30 @@ class Game(object):
 
         r = LpVariable(name="congestion_ratio")
 
+        # Flow into source nodes = Flow out of source nodes
         for pr in pairs:
             model += (lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[1] == self.pair_idx_to_sd[pr][0]]) - lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[0] == self.pair_idx_to_sd[pr][0]]) == -1, "flow_conservation_constr1_%d"%pr)
 
+        # Flow into destination node = Flow out of destination node
         for pr in pairs:
             model += (lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[1] == self.pair_idx_to_sd[pr][1]]) - lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[0] == self.pair_idx_to_sd[pr][1]]) == 1, "flow_conservation_constr2_%d"%pr)
 
+        # Flow conservation for intermediate nodes.
         for pr in pairs:
             for n in self.lp_nodes:
                 if n not in self.pair_idx_to_sd[pr]:
                     model += (lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[1] == n]) - lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[0] == n]) == 0, "flow_conservation_constr3_%d_%d"%(pr,n))
 
+        # Adds constraints to the links / ensures that the capacity is not exceeded
         for e in self.lp_links:
             ei = self.link_sd_to_idx[e]
             model += (link_load[ei] == background_link_loads[ei] + lpSum([demands[pr]*ratio[pr, e[0], e[1]] for pr in pairs]), "link_load_constr%d"%ei)
             model += (link_load[ei] <= self.link_capacities[ei]*r, "congestion_ratio_constr%d"%ei)
 
+        # Objective function, minimize r (Congestion Ratio)
         model += r + OBJ_EPSILON*lpSum([link_load[ei] for ei in self.links])
 
+        # Solve the problem
         model.solve(solver=GLPK(msg=False))
         assert LpStatus[model.status] == 'Optimal'
 
@@ -389,9 +453,13 @@ class CFRRL_Game(Game):
             self.baseline[tm_idx] = (reward, 1)
 
     def evaluate(self, tm_idx, actions=None, ecmp=True, eval_delay=False):
+
+        # Evaluates traffic distribution, calculates MLU (Maximum Link Utilization) and the delay
         if ecmp:
             ecmp_mlu, ecmp_delay = self.eval_ecmp_traffic_distribution(tm_idx, eval_delay=eval_delay)
-        
+
+
+
         _, solution = self.optimal_routing_mlu_critical_pairs(tm_idx, actions)
         mlu, delay = self.eval_critical_flow_and_ecmp(tm_idx, actions, solution, eval_delay=eval_delay)
 
