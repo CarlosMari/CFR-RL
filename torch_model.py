@@ -4,7 +4,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 import os
 import inspect
-
+import torch.optim.lr_scheduler as lr_scheduler
+from torch.optim.lr_scheduler import ExponentialLR
+import torch.utils.tensorboard as tensorboard
 
 class Model(nn.Module):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
@@ -20,23 +22,33 @@ class Model(nn.Module):
         elif config.method == 'pure_policy':
             self.create_policy_model(config)
         """
-        self.lr_schedule = optim.lr_scheduler.ExponentialLR(
+        """self.lr_schedule = optim.lr_scheduler.ExponentialLR(
             optimizer=optim.RMSprop(self.parameters(), lr=config.initial_learning_rate),
             gamma=config.learning_rate_decay_rate,
-        )
+        )"""
 
         if master:
             if config.method == 'actor_critic':
-                self.ckpt = torch.load(
-                    f'./torch_ckpts/{self.model_name}/actor_critic_model.pth'
-                )
+                ckpt_path = f'./torch_ckpts/{self.model_name}/actor_critic_model.pth'
             elif config.method == 'pure_policy':
-                self.ckpt = torch.load(
-                    f'./torch_ckpts/{self.model_name}/pure_policy_model.pth'
-                )
-            self.ckpt_dir = f'./torch_ckpts/{self.model_name}'
-            self.writer = torch.utils.tensorboard.SummaryWriter(f'./logs/{self.model_name}')
-            self.model.summary()
+                ckpt_path = f'./torch_ckpts/{self.model_name}/pure_policy_model.pth'
+
+            # Check if the directory exists, and create it if not
+            ckpt_dir = os.path.dirname(ckpt_path)
+            if not os.path.exists(ckpt_dir):
+                os.makedirs(ckpt_dir)
+
+            # Load the PyTorch checkpoint
+            self.ckpt = torch.load(ckpt_path)
+
+            # Set up the TensorBoard summary writer
+            log_dir = f'./logs/{self.model_name}'
+
+            # Check if the directory exists, and create it if not
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+
+            self.writer = tensorboard.SummaryWriter(log_dir)
 
 
     """ This 2 functions will be deleted
@@ -81,11 +93,6 @@ class Model(nn.Module):
 
 
     def actor_critic_train(self, inputs, actions, rewards, entropy_weight=0.01):
-        # Convert inputs, actions and rewards to PyTorch Tensors
-        inputs = torch.tensor(inputs, dtype=torch.float32)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        actions = torch.tensor(actions, dtype=torch.float32)
-
         raise NotImplementedError
 
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
@@ -104,17 +111,50 @@ class Model(nn.Module):
         raise NotImplementedError
 
     def save_hyperparams(self, config):
-        raise NotImplementedError
+        fp = self.ckpt_dir + '/hyper_parameters'
+
+        hparams = {k: v for k, v in inspect.getmembers(config)
+                   if not k.startswith('__') and not callable(k)}
+
+        if os.path.exists(fp):
+            f = open(fp, 'r')
+            match = True
+            for line in f:
+                idx = line.find('=')
+                if idx == -1:
+                    continue
+                k = line[:idx - 1]
+                v = line[idx + 2:-1]
+                if v != str(hparams[k]):
+                    match = False
+                    print('[!] Unmatched hyperparameter:', k, v, hparams[k])
+                    break
+            f.close()
+            if match:
+                return
+
+            f = open(fp, 'a')
+        else:
+            if not os.path.exists(self.ckpt_dir):
+                os.makedirs(self.ckpt_dir)
+            f = open(fp, 'w+')
+
+        for k, v in hparams.items():
+            f.writelines(k + ' = ' + str(v) + '\n')
+        f.writelines('\n')
+        print("Save hyper parameters: %s" % fp)
+        f.close()
 
 
 class ActorCriticModel(Model):
-    def __init__(self, config, input_dim, action_dim):
-        super(ActorCriticModel, self).__init__()
+
+    def __init__(self, config, input_dim, action_dim, max_moves, master=True):
+        super(ActorCriticModel, self).__init__(config,input_dim,action_dim, max_moves, master=master)
         self.input_dim = input_dim
         self.action_dim = action_dim
         self.Conv2D_out = config.Conv2D_out  # Why are this parameters
         self.Dense_out = config.Dense_out
-
+        self.max_moves = max_moves
         self.actor = nn.Sequential(
             nn.Conv2d(self.input_dim[0], self.Conv2D_out, kernel_size=3, padding=1),
             nn.LeakyReLU(),
@@ -134,12 +174,20 @@ class ActorCriticModel(Model):
 
         )
 
+        #self.summary()
+
+
+
+
         if config.optimizer == 'RMSprop':
-            self.actor_optimizer = optim.RMSprop(self.parameters(), lr=self.lr_schedule.get_lr()[0])
-            self.critic_optimizer = optim.RMSprop(self.parameters(), lr=self.lr_schedule.get_lr()[0])
+            self.actor_optimizer = optim.RMSprop(self.parameters(), lr=config.initial_learning_rate)
+            self.critic_optimizer = optim.RMSprop(self.parameters(), lr=config.initial_learning_rate)
         elif config.optimizer == 'Adam':
-            self.actor_optimizer = optim.Adam(self.parameters(), lr=self.lr_schedule.get_lr()[0])
-            self.critic_optimizer = optim.Adam(self.parameters(), lr=self.lr_schedule.get_lr()[0])
+            self.actor_optimizer = optim.Adam(self.parameters(), lr=config.initial_learning_rate)
+            self.critic_optimizer = optim.Adam(self.parameters(), lr=config.initial_learning_rate)
+
+        self.lr_scheduler_actor = ExponentialLR(self.actor_optimizer, gamma=config.learning_rate_decay_rate)
+        self.lr_scheduler_critic = ExponentialLR(self.critic_optimizer, gamma=config.learning_rate_decay_rate)
 
 
     def forward(self, inputs):

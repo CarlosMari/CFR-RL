@@ -6,7 +6,7 @@ import multiprocessing as mp
 from absl import app
 from absl import flags
 
-#import tensorflow as tf
+import tensorflow as tf
 from env import Environment
 from game import CFRRL_Game
 from model import Network

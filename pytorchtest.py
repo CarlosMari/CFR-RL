@@ -1,3 +1,4 @@
 import torch
+import numpy as np
 
-print("Helo")
+print(np.random.RandomState(seed=1))
