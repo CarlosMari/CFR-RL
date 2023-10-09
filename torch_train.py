@@ -28,30 +28,36 @@ def central_agent(config, game, model_weight_queues, experience_queues):
     network.save_hyperparams(config)
     #network.restore_ckpt()
     # Initial step from checkpoint should be implemented
-    for step in tqdm(range(network.step, config.max_step), ncols=70, initial=0):
+    for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
         network.step += 1
-        FLAGS.num_agents = 4
         print(f"This is a test, step {step}, NUM_AGENTS {FLAGS.num_agents}")
         model_weights = network.get_weights()
+        print("Type of weights")
+        print(type(model_weights))
         #print(f"Printing weights: {model_weights}")
 
         for i in range(FLAGS.num_agents):
             #print(f"Iteration {i}")
             model_weight_queues[i].put(model_weights)
+            model_weight_queues[i].join()
+            #model_weight_queues[i].put(np.array([2,3,4,6,72,3,2]))
             #print(model_weight_queues[i].get())
-            #print(f"Weights for {i}")
+            print(f"Weights for {i}")
 
         print("Finished uploading!")
 
         # I would like to implement this on the object not via ifs
         if config.method == "actor_critic":
+
             # Assemble experiences from the agents
             s_batch = []
             a_batch = []
             r_batch = []
 
             for i in range(FLAGS.num_agents):
+                print(f"Getting experiences from {i}")
                 s_batch_agent, a_batch_agent, r_batch_agent = experience_queues[i].get()
+
 
                 assert len(s_batch_agent) == FLAGS.num_iter, \
                     (len(s_batch_agent), len(a_batch_agent), len(r_batch_agent))
@@ -109,7 +115,9 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
     # I have to check the format of the weights in the queue
 
     print("Attempting to read!!!!!")
+    print(type(model_weight_queues))
     model_weights = model_weight_queues.get()
+    model_weight_queues.task_done()
     print("Read Succesful!")
     network.load_state_dict(model_weights)
 
@@ -192,7 +200,7 @@ def main(_):
     print('Agent num: %d, iter num: %d\n' % (FLAGS.num_agents + 1, FLAGS.num_iter))
     for _ in range(FLAGS.num_agents):
         #print(f"Creating queue for {_}")
-        model_weights_queues.append(mp.Queue(1))
+        model_weights_queues.append(mp.JoinableQueue(1))
         experience_queues.append(mp.Queue(1))
 
     tm_subsets = np.array_split(game.tm_indexes, FLAGS.num_agents)
