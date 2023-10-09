@@ -1,6 +1,7 @@
 import torch
 from tqdm import tqdm
-import multiprocessing as mp
+#import multiprocessing as mp
+import torch.multiprocessing as mp
 import sys
 from game import CFRRL_Game
 from torch_model import PolicyModel, ActorCriticModel
@@ -12,7 +13,7 @@ from absl import app
 from absl import flags
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 20, 'number of agents')
+flags.DEFINE_integer('num_agents', 4, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -29,7 +30,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
     # Initial step from checkpoint should be implemented
     for step in tqdm(range(network.step, config.max_step), ncols=70, initial=0):
         network.step += 1
-        FLAGS.num_agents = 11
+        FLAGS.num_agents = 4
         print(f"This is a test, step {step}, NUM_AGENTS {FLAGS.num_agents}")
         model_weights = network.get_weights()
         #print(f"Printing weights: {model_weights}")
@@ -109,7 +110,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
     print("Attempting to read!!!!!")
     model_weights = model_weight_queues.get()
-
+    print("Read Succesful!")
     network.load_state_dict(model_weights)
 
     idx = 0
