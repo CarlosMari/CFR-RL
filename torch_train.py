@@ -1,7 +1,7 @@
 import torch
 from tqdm import tqdm
 import multiprocessing as mp
-
+import sys
 from game import CFRRL_Game
 from torch_model import PolicyModel, ActorCriticModel
 from game import CFRRL_Game
@@ -15,8 +15,9 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer('num_agents', 20, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
-
+FLAGS(sys.argv)
 CHECK_GRADIENTS = False
+
 def central_agent(config, game, model_weight_queues, experience_queues):
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
@@ -24,8 +25,23 @@ def central_agent(config, game, model_weight_queues, experience_queues):
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
 
     network.save_hyperparams(config)
+    #network.restore_ckpt()
     # Initial step from checkpoint should be implemented
-    for step in tqdm(range(0, config.max_step), ncols=70, initial=0):
+    for step in tqdm(range(network.step, config.max_step), ncols=70, initial=0):
+        network.step += 1
+        FLAGS.num_agents = 11
+        print(f"This is a test, step {step}, NUM_AGENTS {FLAGS.num_agents}")
+        model_weights = network.get_weights()
+        #print(f"Printing weights: {model_weights}")
+
+        for i in range(FLAGS.num_agents):
+            #print(f"Iteration {i}")
+            model_weight_queues[i].put(model_weights)
+            #print(model_weight_queues[i].get())
+            #print(f"Weights for {i}")
+
+        print("Finished uploading!")
+
         # I would like to implement this on the object not via ifs
         if config.method == "actor_critic":
             # Assemble experiences from the agents
@@ -57,10 +73,10 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                     assert not torch.isnan(g).any(), ('actor_gradients', s_batch, a_batch, r_batch, entropy)
                 for g in critic_gradients:
                     assert not torch.isnan(g).any(), ('critic_gradients', s_batch, a_batch, r_batch, entropy)
-            """
+
             if step % config.save_step == config.save_step - 1:
                 network.save_ckpt(_print=True)
-                
+            """    
                 #log training information
                 actor_learning_rate = network.lr_schedule(network.actor_optimizer.iterations.numpy()).numpy()
                 avg_value_loss = np.mean(value_loss)
@@ -82,7 +98,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
-    #print(f"Creating agent {agent_id}")
+    print(f"Creating agent {agent_id}")
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
@@ -90,7 +106,10 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
     # Initial synchronization of the model weights
     # I have to check the format of the weights in the queue
+
+    print("Attempting to read!!!!!")
     model_weights = model_weight_queues.get()
+
     network.load_state_dict(model_weights)
 
     idx = 0
@@ -109,7 +128,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         s_batch.append(state)
 
         with torch.no_grad():
-            policy, _ = network.actor(np.expand_dims(state, 0))
+            policy, _ = network.actor(torch.unsqueeze(state, 0))
         assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy, replace=False)
         for a in actions:
@@ -153,7 +172,7 @@ def main(_):
 
     # Set the logging level
     torch.backends.cudnn.benchmark = False  # Disable CUDA optimizations for deterministic behavior
-    torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
+    #torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
     torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
 
     # Configure logging (you can customize this)
@@ -167,19 +186,23 @@ def main(_):
     experience_queues = []
     if FLAGS.num_agents == 0 or FLAGS.num_agents >= mp.cpu_count():
         FLAGS.num_agents = mp.cpu_count() - 1
+
+        #FLAGS.num_agents = 1
     print('Agent num: %d, iter num: %d\n' % (FLAGS.num_agents + 1, FLAGS.num_iter))
     for _ in range(FLAGS.num_agents):
+        #print(f"Creating queue for {_}")
         model_weights_queues.append(mp.Queue(1))
         experience_queues.append(mp.Queue(1))
 
     tm_subsets = np.array_split(game.tm_indexes, FLAGS.num_agents)
     coordinator = mp.Process(target=central_agent, args=(config,game,model_weights_queues, experience_queues))
 
+
     coordinator.start()
 
     agents = []
     for i in range(FLAGS.num_agents):
-        agents.append(mp.Process(target=agent, args=(i,config,game,tm_subsets[i],model_weights_queues[i],experience_queues[i])))
+        agents.append(mp.Process(target=agent, args=(i,config,game,tm_subsets[i],model_weights_queues[i], experience_queues[i])))
 
     for i in range(FLAGS.num_agents):
         agents[i].start()

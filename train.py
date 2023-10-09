@@ -25,6 +25,7 @@ def central_agent(config, game, model_weights_queues, experience_queues):
     start_step = network.restore_ckpt()
     for step in tqdm(range(start_step, config.max_step), ncols=70, initial=start_step):
         network.ckpt.step.assign_add(1)
+
         model_weights = network.model.get_weights()
 
         for i in range(FLAGS.num_agents):
@@ -141,7 +142,8 @@ def agent(agent_id, config, game, tm_subset, model_weights_queue, experience_que
     num_tms = len(tm_subset)
     random_state.shuffle(tm_subset)
     run_iterations = FLAGS.num_iter
-    
+
+    print("Starting LOOP")
     while True:
         tm_idx = tm_subset[idx]
         #state
@@ -211,6 +213,7 @@ def main(_):
     experience_queues = []
     if FLAGS.num_agents == 0 or FLAGS.num_agents >= mp.cpu_count():
         FLAGS.num_agents = mp.cpu_count() - 1
+
     print('Agent num: %d, iter num: %d\n'%(FLAGS.num_agents+1, FLAGS.num_iter))
     for _ in range(FLAGS.num_agents):
         model_weights_queues.append(mp.Queue(1))
@@ -221,7 +224,9 @@ def main(_):
     coordinator = mp.Process(target=central_agent, args=(config, game, model_weights_queues, experience_queues))
 
     coordinator.start()
-
+    print("============================================================")
+    print("Started coordinator")
+    print("============================================================")
     agents = []
     for i in range(FLAGS.num_agents):
         agents.append(mp.Process(target=agent, args=(i, config, game, tm_subsets[i], model_weights_queues[i], experience_queues[i])))

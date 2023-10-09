@@ -8,47 +8,17 @@ import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import ExponentialLR
 import torch.utils.tensorboard as tensorboard
 
+
 class Model(nn.Module):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
         super(Model, self).__init__()
+        self.config = config
         self.input_dims = input_dims
         self.action_dim = action_dim
         self.max_moves = max_moves
+        self.master = master
         self.model_name = f"{config.version}-{config.project_name}_{config.method}_{config.model_type}_{config.topology_file}_{config.traffic_file}"
 
-        """
-        if config.method == 'actor_critic':
-            self.create_actor_critic_model(config)
-        elif config.method == 'pure_policy':
-            self.create_policy_model(config)
-        """
-        """self.lr_schedule = optim.lr_scheduler.ExponentialLR(
-            optimizer=optim.RMSprop(self.parameters(), lr=config.initial_learning_rate),
-            gamma=config.learning_rate_decay_rate,
-        )"""
-
-        if master:
-            if config.method == 'actor_critic':
-                ckpt_path = f'./torch_ckpts/{self.model_name}/actor_critic_model.pth'
-            elif config.method == 'pure_policy':
-                ckpt_path = f'./torch_ckpts/{self.model_name}/pure_policy_model.pth'
-
-            # Check if the directory exists, and create it if not
-            ckpt_dir = os.path.dirname(ckpt_path)
-            if not os.path.exists(ckpt_dir):
-                os.makedirs(ckpt_dir)
-
-            # Load the PyTorch checkpoint
-            self.ckpt = torch.load(ckpt_path)
-
-            # Set up the TensorBoard summary writer
-            log_dir = f'./logs/{self.model_name}'
-
-            # Check if the directory exists, and create it if not
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
-
-            self.writer = tensorboard.SummaryWriter(log_dir)
 
 
     """ This 2 functions will be deleted
@@ -57,6 +27,9 @@ class Model(nn.Module):
 
     def create_policy_model(self, config):
         pass  # Implement the policy model architecture in PyTorch"""
+
+    def initialize_optimizers(self):
+        raise NotImplementedError
 
     def value_loss_fn(self, rewards, values):
         rewards = torch.FloatTensor(rewards).unsqueeze(1)
@@ -72,18 +45,18 @@ class Model(nn.Module):
         actions = actions.view(batch_size, max_moves, action_dim)
 
         # Calculate policy
-        policy = torch.softmax(logits, dim=1) # Shape [batch_size, action_dim]
+        policy = torch.softmax(logits, dim=1)  # Shape [batch_size, action_dim]
 
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
-        entropy = -torch.sum(policy* torch.log(policy + log_epsilon), dim=-1)
+        entropy = -torch.sum(policy * torch.log(policy + log_epsilon), dim=-1)
         entropy = entropy.unsqueeze(-1)
 
         policy = policy.unsqueeze(-1)
 
-        policy_loss = torch.log(torch.clamp(torch.sum(actions*policy, dim=-2),
-                                            min = log_epsilon))
+        policy_loss = torch.log(torch.clamp(torch.sum(actions * policy, dim=-2),
+                                            min=log_epsilon))
         policy_loss = torch.sum(policy_loss, dim=-1, keepdim=True)
 
         policy_loss -= entropy_weight * entropy
@@ -91,9 +64,9 @@ class Model(nn.Module):
 
         return policy_loss, entropy
 
+    def get_weights(self):
+        return self.state_dict()
 
-    def actor_critic_train(self, inputs, actions, rewards, entropy_weight=0.01):
-        raise NotImplementedError
 
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
         raise NotImplementedError
@@ -101,10 +74,10 @@ class Model(nn.Module):
     def predict(self, input):
         raise NotImplementedError
 
-    def restore_ckpt(self, checkpoint=''):
+    def restore_ckpt(self, checkpoint_path=None):
         raise NotImplementedError
 
-    def save_ckpt(self, _print=False):
+    def save_ckpt(self, _print=True):
         raise NotImplementedError
 
     def inject_summaries(self, summary_dict, step):
@@ -149,7 +122,8 @@ class Model(nn.Module):
 class ActorCriticModel(Model):
 
     def __init__(self, config, input_dim, action_dim, max_moves, master=True):
-        super(ActorCriticModel, self).__init__(config,input_dim,action_dim, max_moves, master=master)
+        super(ActorCriticModel, self).__init__(config, input_dim, action_dim, max_moves, master=master)
+        self.config = config
         self.input_dim = input_dim
         self.action_dim = action_dim
         self.Conv2D_out = config.Conv2D_out  # Why are this parameters
@@ -174,21 +148,53 @@ class ActorCriticModel(Model):
 
         )
 
-        #self.summary()
+        # We create the optimizers
+        self.initialize_optimizers()
+
+        if master:
+            ckpt_path = f'./torch_ckpts/{self.model_name}/actor_critic_model.pth'
+
+            # Check if the directory exists, and create it if not
+            self.ckpt_dir = os.path.dirname(ckpt_path)
+            print(self.ckpt_dir)
+            if os.path.exists(ckpt_path):
+                print("Checkpoint has been restored")
+                self.restore_ckpt(ckpt_path)
+            else:
+                if not os.path.exists(self.ckpt_dir):
+                    os.makedirs(self.ckpt_dir)
+                if not os.path.exists(ckpt_path):
+                    self.step = 0
+                    print(f'Path: {ckpt_path}')
+                    print("There is no previous checkpoint, initializing...")
 
 
 
 
-        if config.optimizer == 'RMSprop':
-            self.actor_optimizer = optim.RMSprop(self.parameters(), lr=config.initial_learning_rate)
-            self.critic_optimizer = optim.RMSprop(self.parameters(), lr=config.initial_learning_rate)
-        elif config.optimizer == 'Adam':
-            self.actor_optimizer = optim.Adam(self.parameters(), lr=config.initial_learning_rate)
-            self.critic_optimizer = optim.Adam(self.parameters(), lr=config.initial_learning_rate)
+            # Set up the TensorBoard summary writer
+            log_dir = f'./logs/{self.model_name}'
+            self.log_dir = log_dir
+            # Check if the directory exists, and create it if not
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
 
-        self.lr_scheduler_actor = ExponentialLR(self.actor_optimizer, gamma=config.learning_rate_decay_rate)
-        self.lr_scheduler_critic = ExponentialLR(self.critic_optimizer, gamma=config.learning_rate_decay_rate)
+            self.writer = tensorboard.SummaryWriter(log_dir)
 
+        # self.summary()
+
+
+
+
+    def initialize_optimizers(self):
+        if self.config.optimizer == 'RMSprop':
+            self.actor_optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
+            self.critic_optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
+        elif self.config.optimizer == 'Adam':
+            self.actor_optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
+            self.critic_optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
+
+        self.lr_scheduler_actor = ExponentialLR(self.actor_optimizer, gamma=self.config.learning_rate_decay_rate)
+        self.lr_scheduler_critic = ExponentialLR(self.critic_optimizer, gamma=self.config.learning_rate_decay_rate)
 
     def forward(self, inputs):
         logits = self.actor(inputs)
@@ -200,7 +206,6 @@ class ActorCriticModel(Model):
         inputs = torch.tensor(inputs, dtype=torch.float32)
         rewards = torch.tensor(rewards, dtype=torch.float32)
         actions = torch.tensor(actions, dtype=torch.float32)
-
 
         # We tell the model that it is training
         self.actor.train()
@@ -224,7 +229,9 @@ class ActorCriticModel(Model):
         self.actor_optimizer.step()
 
         # Value_loss, entropy, actor gradients and critic gradients.
-        return value_loss.item(), entropy.item(), [param.grad for param in self.actor.parameters()], [param.grad for param in self.critic.parameters()]
+        return value_loss.item(), entropy.item(), [param.grad for param in self.actor.parameters()], [param.grad for
+                                                                                                      param in
+                                                                                                      self.critic.parameters()]
 
     def predict(self, input):
         """
@@ -239,6 +246,40 @@ class ActorCriticModel(Model):
             logits, values = self.input()
             policy = F.softmax(logits, dim=1)
         return policy, values.item()
+
+    def restore_ckpt(self, checkpoint_path=None):
+        if checkpoint_path is None:
+            checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
+
+
+        checkpoint = torch.load(checkpoint_path)
+        self.load_state_dict(checkpoint['model_state_dict'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+        self.step = checkpoint['step']
+
+    def save_ckpt(self, _print=True):
+        # Create a directory for saving checkpoints if it doesn't exist
+        if not os.path.exists(self.ckpt_dir):
+            os.makedirs(self.ckpt_dir)
+
+        # Save the model and other relevant information to a checkpoint file
+        checkpoint = {
+            'model_state_dict': self.model.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+            'step': self.step,
+            # Add any other information you want to save
+        }
+
+        # Define the checkpoint file path (e.g., checkpoint.pth)
+        checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
+
+        # Save the checkpoint
+        torch.save(checkpoint, checkpoint_path)
+
+        if _print:
+            print("Saved checkpoint for step {}: {}".format(self.step, checkpoint_path))
 
 
 class PolicyModel(Model):
@@ -255,7 +296,6 @@ class PolicyModel(Model):
             nn.LeakyReLU(),
             nn.Linear(config.Dense_out, self.action_dim)
         )
-
 
         if config.optimizer == 'RMSprop':
             self.optimizer = optim.RMSprop(self.parameters(), lr=self.lr_schedule.get_lr()[0])
