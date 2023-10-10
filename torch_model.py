@@ -7,7 +7,7 @@ import inspect
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import ExponentialLR
 import torch.utils.tensorboard as tensorboard
-
+from torchsummary import summary
 
 class Model(nn.Module):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
@@ -39,10 +39,7 @@ class Model(nn.Module):
 
     def policy_loss_fn(self, logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12):
         # Review operations make sure they are correct
-        batch_size, max_moves, action_dim = actions.size()
-
-        # Reshape
-        actions = actions.view(batch_size, max_moves, action_dim)
+        actions = actions.view(-1, self.max_moves, self.action_dim)
 
         # Calculate policy
         policy = torch.softmax(logits, dim=1)  # Shape [batch_size, action_dim]
@@ -50,14 +47,22 @@ class Model(nn.Module):
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
-        entropy = -torch.sum(policy * torch.log(policy + log_epsilon), dim=-1)
+        # REVIEW ENTROPY CALCULATION
+        entropy = F.cross_entropy(logits, policy)
         entropy = entropy.unsqueeze(-1)
-
         policy = policy.unsqueeze(-1)
 
-        policy_loss = torch.log(torch.clamp(torch.sum(actions * policy, dim=-2),
-                                            min=log_epsilon))
-        policy_loss = torch.sum(policy_loss, dim=-1, keepdim=True)
+        #print(f' Actions shape: {actions.shape}')
+        #print(f' Policy shape: {policy.shape}')
+
+        product = torch.matmul(actions, policy).squeeze()
+        # Ensures the minimum is log_epilon
+        policy_loss = torch.log(
+            torch.clamp(product, min=log_epsilon)
+        )
+
+        policy_loss = torch.sum(policy_loss, dim=1, keepdim=True)
+        policy_loss = torch.multiply(policy_loss, (-advantages).detach())
 
         policy_loss -= entropy_weight * entropy
         policy_loss = torch.sum(policy_loss)
@@ -129,20 +134,23 @@ class ActorCriticModel(Model):
         self.Conv2D_out = config.Conv2D_out  # Why are this parameters
         self.Dense_out = config.Dense_out
         self.max_moves = max_moves
+        #print(f'Dimensions : {self.input_dim}')
         self.actor = nn.Sequential(
-            nn.Conv2d(self.input_dim[0], self.Conv2D_out, kernel_size=3, padding=1),
+            nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(self.Conv2D_out * self.input_dim[1] * self.input_dim[2], self.Dense_out),
+            nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
             nn.LeakyReLU(),
-            nn.Linear(self.Dense_out, self.action_dim)
+            nn.Linear(self.Dense_out, self.action_dim),
         )
 
+
+
         self.critic = nn.Sequential(
-            nn.Conv2d(self.input_dim[0], self.Conv2D_out, kernel_size=3, padding=1),
+            nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(self.Conv2D_out * self.input_dim[1] * self.input_dim[2], self.Dense_out),
+            nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
             nn.LeakyReLU(),
             nn.Linear(self.Dense_out, 1)
 
@@ -180,7 +188,7 @@ class ActorCriticModel(Model):
 
             self.writer = tensorboard.SummaryWriter(log_dir)
 
-        # self.summary()
+        #summary(self,(12,12,1))
 
 
 
@@ -197,15 +205,22 @@ class ActorCriticModel(Model):
         self.lr_scheduler_critic = ExponentialLR(self.critic_optimizer, gamma=self.config.learning_rate_decay_rate)
 
     def forward(self, inputs):
+        #print("Input type: ")
+        #print(type(inputs))
         logits = self.actor(inputs)
+        logits = logits.to(torch.float64)
+        if self.config.logit_clipping > 0:
+            logits = self.config.logit_clipping * torch.tanh(logits)
+        logits = F.softmax(logits, dim=1)
         values = self.critic(inputs)
         return logits, values
 
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
-        inputs = torch.tensor(inputs, dtype=torch.float32)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        actions = torch.tensor(actions, dtype=torch.float32)
+        inputs = torch.stack(inputs, dim=0)
+        #print(inputs.shape)
+        #rewards = torch.tensor(rewards, dtype=torch.float64)
+        #actions = torch.tensor(actions, dtype=torch.float64)
 
         # We tell the model that it is training
         self.actor.train()
@@ -216,7 +231,8 @@ class ActorCriticModel(Model):
         self.critic_optimizer.zero_grad()
 
         # We call the forward function and calculate the loss
-        logits, values = self(inputs)
+        # [B, C_in, H, W]
+        logits, values = self(inputs.permute(0,3,1,2))
 
         # We calculate loss and advantages
         value_loss, advantages = self.value_loss_fn(rewards, values)
@@ -265,11 +281,10 @@ class ActorCriticModel(Model):
 
         # Save the model and other relevant information to a checkpoint file
         checkpoint = {
-            'model_state_dict': self.model.state_dict(),
+            'model_state_dict': self.state_dict(),
             'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
             'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
             'step': self.step,
-            # Add any other information you want to save
         }
 
         # Define the checkpoint file path (e.g., checkpoint.pth)

@@ -11,6 +11,7 @@ from config import get_config
 import numpy as np
 from absl import app
 from absl import flags
+import json
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('num_agents', 4, 'number of agents')
@@ -30,21 +31,21 @@ def central_agent(config, game, model_weight_queues, experience_queues):
     # Initial step from checkpoint should be implemented
     for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
         network.step += 1
-        print(f"This is a test, step {step}, NUM_AGENTS {FLAGS.num_agents}")
+        #print(f"This is a test, step {step}, NUM_AGENTS {FLAGS.num_agents}")
         model_weights = network.get_weights()
-        print("Type of weights")
-        print(type(model_weights))
-        #print(f"Printing weights: {model_weights}")
+        #torch.save(model_weights, 'model_weights.pth')
 
+        #print(f"Printing weights: {model_weights}")
+        #print("Uploading weights!! Iteration {i}")
         for i in range(FLAGS.num_agents):
             #print(f"Iteration {i}")
             model_weight_queues[i].put(model_weights)
             model_weight_queues[i].join()
             #model_weight_queues[i].put(np.array([2,3,4,6,72,3,2]))
             #print(model_weight_queues[i].get())
-            print(f"Weights for {i}")
+            #print(f"Weights for {i}")
 
-        print("Finished uploading!")
+        #print("Finished uploading!")
 
         # I would like to implement this on the object not via ifs
         if config.method == "actor_critic":
@@ -55,24 +56,27 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             r_batch = []
 
             for i in range(FLAGS.num_agents):
-                print(f"Getting experiences from {i}")
+                #print(f"Getting experiences from {i}")
                 s_batch_agent, a_batch_agent, r_batch_agent = experience_queues[i].get()
-
 
                 assert len(s_batch_agent) == FLAGS.num_iter, \
                     (len(s_batch_agent), len(a_batch_agent), len(r_batch_agent))
 
-                s_batch += s_batch_agent
-                a_batch += a_batch_agent
-                r_batch += r_batch_agent
+                # Convert lists to PyTorch tensors and concatenate
+                s_batch += [torch.tensor(s, dtype=torch.float32) for s in s_batch_agent]
+                a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
+                r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
 
             assert len(s_batch)*game.max_moves == len(a_batch)
 
             # Convert 'a_batch' to one-hot encoded tensors
             action_dim = game.action_dim
-            actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float32)
-            actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
+            actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
 
+
+
+            actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
+            #print(f"Type -> {type(s_batch[0])}")
             value_loss, entropy, actor_gradients, critic_gradients = network.train(s_batch, actions,r_batch, config.entropy_weight)
 
             if CHECK_GRADIENTS: # Checks if gradients are NaN
@@ -114,11 +118,11 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
     # Initial synchronization of the model weights
     # I have to check the format of the weights in the queue
 
-    print("Attempting to read!!!!!")
-    print(type(model_weight_queues))
+    #print("Attempting to read!!!!!")
+    #print(type(model_weight_queues))
     model_weights = model_weight_queues.get()
     model_weight_queues.task_done()
-    print("Read Succesful!")
+    #print("Read Succesful!")
     network.load_state_dict(model_weights)
 
     idx = 0
@@ -133,13 +137,16 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
     while True:
         tm_idx = tm_subset[idx]
-        state = game.get_state(tm_idx)
+        state = torch.from_numpy(game.get_state(tm_idx))
         s_batch.append(state)
-
+        #print(f'State {state}' )
         with torch.no_grad():
-            policy, _ = network.actor(torch.unsqueeze(state, 0))
-        assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
-        actions = random_state.choice(game.action_dim, game.max_moves, p=policy, replace=False)
+            # [B, C_in, H, W]
+            extended_state = torch.unsqueeze(state, 0).permute(0,3,1,2)
+            policy, _ = network(extended_state)
+        #assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
+        #print(f'Policy: {policy.view(-1)}')
+        actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
         for a in actions:
             a_batch.append(a)
 
@@ -158,7 +165,9 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             elif config.method == 'pure_policy':
                 raise NotImplementedError
 
+            #print(f' Agent: {agent_id} Attempting to get weights')
             model_weights = model_weight_queues.get()
+            model_weight_queues.task_done()
             network.load_state_dict(model_weights)
 
             del s_batch[:]
