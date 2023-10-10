@@ -2,9 +2,9 @@ class NetworkConfig(object):
   """
   Contains the necessary parameters/hyperparameters of the NN.
   """
-  scale = 10#0
+  scale = 100
 
-  max_step = 100*scale#1000 * scale
+  max_step = 1000 * scale
   
   initial_learning_rate = 0.0001
   learning_rate_decay_rate = 0.96

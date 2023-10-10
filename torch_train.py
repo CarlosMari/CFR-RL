@@ -11,10 +11,10 @@ from config import get_config
 import numpy as np
 from absl import app
 from absl import flags
-import json
+import wandb
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 4, 'number of agents')
+flags.DEFINE_integer('num_agents', 8, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -25,6 +25,21 @@ def central_agent(config, game, model_weight_queues, experience_queues):
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
     else:
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
+
+    # We initialize wandb
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project=network.model_name,
+
+        # track hyperparameters and run metadata
+        config={
+            "learning_rate": network.config.initial_learning_rate,
+            "dataset": network.config.topology_file,
+            "architecture": network.config.model_type,
+            "steps": network.config.max_step,
+            "agents": FLAGS.num_agents
+        }
+    )
 
     network.save_hyperparams(config)
     #network.restore_ckpt()
@@ -88,6 +103,20 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             if step % config.save_step == config.save_step - 1:
                 network.save_ckpt(_print=True)
                 print(np.mean(value_loss))
+
+            # Log training information
+            actor_learning_rate = network.lr_scheduler_actor.get_last_lr()
+            #actor_learning_rate = network.lr_schedule(network.actor_optimizer.iterations.numpy()).numpy()
+            avg_value_loss = np.mean(value_loss)
+            avg_reward = np.mean(r_batch)
+            avg_entropy = torch.mean(entropy)
+
+            wandb.log({
+                'learning_rate': actor_learning_rate,
+                'loss': avg_value_loss,
+                'reward': avg_reward,
+                'entropy': avg_entropy
+            })
             """    
                 #log training information
                 actor_learning_rate = network.lr_schedule(network.actor_optimizer.iterations.numpy()).numpy()
