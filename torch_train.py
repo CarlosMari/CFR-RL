@@ -87,6 +87,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
 
             if step % config.save_step == config.save_step - 1:
                 network.save_ckpt(_print=True)
+                print(np.mean(value_loss))
             """    
                 #log training information
                 actor_learning_rate = network.lr_schedule(network.actor_optimizer.iterations.numpy()).numpy()
