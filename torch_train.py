@@ -14,7 +14,7 @@ from absl import flags
 import wandb
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 8, 'number of agents')
+flags.DEFINE_integer('num_agents', 11, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -24,12 +24,13 @@ def central_agent(config, game, model_weight_queues, experience_queues):
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
     else:
+        print("Policy Model")
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
 
     # We initialize wandb
     wandb.init(
         # set the wandb project where this run will be logged
-        project=network.model_name,
+        project='CFR-RL',
 
         # track hyperparameters and run metadata
         config={
@@ -37,7 +38,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             "dataset": network.config.topology_file,
             "architecture": network.config.model_type,
             "steps": network.config.max_step,
-            "agents": FLAGS.num_agents
+            "agents": FLAGS.num_agents,
+            "type": network.config.model_type,
         }
     )
 
@@ -92,7 +94,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
 
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
             #print(f"Type -> {type(s_batch[0])}")
-            value_loss, entropy, actor_gradients, critic_gradients = network.train(s_batch, actions,r_batch, config.entropy_weight)
+            value_loss, entropy, actor_gradients, critic_gradients = network.train(s_batch, actions, r_batch, config.entropy_weight)
 
             if CHECK_GRADIENTS: # Checks if gradients are NaN
                 for g in actor_gradients:
@@ -105,7 +107,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                 print(np.mean(value_loss))
 
             # Log training information
-            actor_learning_rate = network.lr_scheduler_actor.get_last_lr()
+            actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
             #actor_learning_rate = network.lr_schedule(network.actor_optimizer.iterations.numpy()).numpy()
             avg_value_loss = np.mean(value_loss)
             avg_reward = np.mean(r_batch)
@@ -134,7 +136,36 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                 """
         elif config.method == 'pure_policy':
             # Will be implemented in the future
-            raise NotImplementedError
+            s_batch = []
+            a_batch = []
+            r_batch = []
+            ad_batch = []
+
+            for i in range(FLAGS.num_agents):
+                s_batch_agent, a_batch_agent, r_batch_agent, ad_batch_agent = experience_queues[i].get()
+                s_batch += [torch.tensor(s, dtype=torch.float32) for s in s_batch_agent]
+                a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
+                r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
+                ad_batch += [torch.tensor(ad, dtype=torch.float32) for ad in ad_batch_agent]
+
+            assert len(s_batch) * game.max_moves == len(a_batch)
+            action_dim = game.action_dim
+            actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
+
+
+            actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
+
+            entropy = network.train(s_batch, actions, ad_batch, config.entropy_weight)
+            avg_reward = np.mean(r_batch)
+            avg_entropy = torch.mean(entropy)
+            learning_rate = network.lr_scheduler.get_last_lr()[0]
+            avg_advantage = np.mean(ad_batch)
+            wandb.log({
+                'learning_rate': learning_rate,
+                'advantage': avg_advantage,
+                'reward': avg_reward,
+                'entropy': avg_entropy
+            })
 
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
@@ -173,7 +204,11 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         with torch.no_grad():
             # [B, C_in, H, W]
             extended_state = torch.unsqueeze(state, 0).permute(0,3,1,2)
-            policy, _ = network(extended_state)
+            #print(extended_state.shape)
+            if config.method == 'actor_critic':
+                policy, _ = network(extended_state)
+            else:
+                policy = network(extended_state)
         #assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
         #print(f'Policy: {policy.view(-1)}')
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
@@ -187,13 +222,15 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         # Advantages
         # This ifs should be done via enums
         if config.method == 'pure_policy':
-            raise NotImplementedError
+            # advantages
+            ad_batch.append(game.advantage(tm_idx, reward))
+            game.update_baseline(tm_idx, reward)
         run_iteration_idx += 1
         if run_iteration_idx >= run_iterations:
             if config.method == 'actor_critic':
                 experience_queue.put([s_batch,a_batch,r_batch])
             elif config.method == 'pure_policy':
-                raise NotImplementedError
+                experience_queue.put([s_batch, a_batch, r_batch, ad_batch])
 
             #print(f' Agent: {agent_id} Attempting to get weights')
             model_weights = model_weight_queues.get()
@@ -205,7 +242,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             del r_batch[:]
 
             if config.method == 'pure_policy':
-                raise NotImplementedError
+                del ad_batch[:]
 
             run_iteration_idx = 0
 

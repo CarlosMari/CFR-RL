@@ -112,3 +112,6 @@ __code__/
 dist/
 
 logs/
+
+wandb/
+torch_ckpts/

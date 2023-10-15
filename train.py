@@ -71,7 +71,7 @@ def central_agent(config, game, model_weights_queues, experience_queues):
                 avg_entropy = np.mean(entropy)
             
                 network.inject_summaries({
-                    'learning rate': actor_learning_rate,
+                    'learnin_rate': actor_learning_rate,
                     'value loss': avg_value_loss,
                     'avg reward': avg_reward,
                     'avg entropy': avg_entropy

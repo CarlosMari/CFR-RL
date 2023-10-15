@@ -28,8 +28,8 @@ class Config(NetworkConfig):
 
   project_name = 'CFR-RL'
 
-  method = 'actor_critic'
-  #method = 'pure_policy'
+  #method = 'actor_critic'
+  method = 'pure_policy'
   
   model_type = 'Conv'
 

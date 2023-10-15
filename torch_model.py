@@ -6,12 +6,15 @@ import os
 import inspect
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import ExponentialLR
-import torch.utils.tensorboard as tensorboard
+#import torch.utils.tensorboard as tensorboard
+import wandb
 from torchsummary import summary
 
 class Model(nn.Module):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
         super(Model, self).__init__()
+        self.Conv2D_out = config.Conv2D_out  # Why are this parameters
+        self.Dense_out = config.Dense_out
         self.config = config
         self.input_dims = input_dims
         self.action_dim = action_dim
@@ -44,11 +47,14 @@ class Model(nn.Module):
         # Calculate policy
         policy = torch.softmax(logits, dim=1)  # Shape [batch_size, action_dim]
 
+        #print(f'Policy : {policy.shape}, Actions: {actions.shape} Advantages: {advantages.shape}')
+
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
         # REVIEW ENTROPY CALCULATION
         entropy = F.cross_entropy(logits, policy)
+        #entropy = nn.cross_entropy_loss(logits, policy)
         entropy = entropy.unsqueeze(-1)
         policy = policy.unsqueeze(-1)
 
@@ -160,6 +166,7 @@ class ActorCriticModel(Model):
         self.initialize_optimizers()
 
         if master:
+
             ckpt_path = f'./torch_ckpts/{self.model_name}/actor_critic_model.pth'
 
             # Check if the directory exists, and create it if not
@@ -175,23 +182,6 @@ class ActorCriticModel(Model):
                     self.step = 0
                     print(f'Path: {ckpt_path}')
                     print("There is no previous checkpoint, initializing...")
-
-
-
-
-            # Set up the TensorBoard summary writer
-            log_dir = f'./logs/{self.model_name}'
-            self.log_dir = log_dir
-            # Check if the directory exists, and create it if not
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
-
-            self.writer = tensorboard.SummaryWriter(log_dir)
-
-        #summary(self,(12,12,1))
-
-
-
 
     def initialize_optimizers(self):
         if self.config.optimizer == 'RMSprop':
@@ -245,7 +235,8 @@ class ActorCriticModel(Model):
         self.actor_optimizer.step()
 
         # Value_loss, entropy, actor gradients and critic gradients.
-        return value_loss.item(), entropy.item(), [param.grad for param in self.actor.parameters()], [param.grad for
+        # We return the gradients for assert
+        return value_loss.item(), entropy, [param.grad for param in self.actor.parameters()], [param.grad for
                                                                                                       param in
                                                                                                       self.critic.parameters()]
 
@@ -288,7 +279,7 @@ class ActorCriticModel(Model):
         }
 
         # Define the checkpoint file path (e.g., checkpoint.pth)
-        checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
+        checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint_ac.pth')
 
         # Save the checkpoint
         torch.save(checkpoint, checkpoint_path)
@@ -298,30 +289,100 @@ class ActorCriticModel(Model):
 
 
 class PolicyModel(Model):
-    def __init__(self, config, input_dim, action_dim):
+
+
+    def __init__(self, config, input_dim, action_dim, max_moves, master=True):
+        super(PolicyModel, self).__init__(config, input_dim, action_dim, max_moves, master=master)
+
         self.input_dim = input_dim
         self.action_dim = action_dim
         self.config = self.config
 
         self.model = nn.Sequential(
-            nn.Conv2d(self.input_dim[0], config.Conv2D_out, kernel_size=3, padding=1),
+            nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(self.Conv2D_out * self.input_dim[1] * self.input_dim[2], config.Dense_out),
+            nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
             nn.LeakyReLU(),
-            nn.Linear(config.Dense_out, self.action_dim)
+            nn.Linear(self.Dense_out, self.action_dim),
         )
 
         if config.optimizer == 'RMSprop':
-            self.optimizer = optim.RMSprop(self.parameters(), lr=self.lr_schedule.get_lr()[0])
+            self.optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
         elif config.optimizer == 'Adam':
-            self.optimizer = optim.Adam(self.parameters(), lr=self.lr_schedule.get_lr()[0])
+            self.optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
 
-    def forward(self, input):
-        return self.model(input)
+        self.lr_scheduler = ExponentialLR(self.optimizer, gamma=self.config.learning_rate_decay_rate)
 
-    def train(self):
-        raise NotImplementedError
+        if master:
+
+            ckpt_path = f'./torch_ckpts/{self.model_name}/Policy_model.pth'
+
+            # Check if the directory exists, and create it if not
+            self.ckpt_dir = os.path.dirname(ckpt_path)
+            print(self.ckpt_dir)
+            if os.path.exists(ckpt_path):
+                print("Checkpoint has been restored")
+                self.restore_ckpt(ckpt_path)
+            else:
+                if not os.path.exists(self.ckpt_dir):
+                    os.makedirs(self.ckpt_dir)
+                if not os.path.exists(ckpt_path):
+                    self.step = 0
+                    print(f'Path: {ckpt_path}')
+                    print("There is no previous checkpoint, initializing...")
+
+    def forward(self, inputs):
+        logits = self.model(inputs).to(torch.float64)
+        if self.config.logit_clipping > 0:
+            logits = self.config.logit_clipping * torch.tanh(logits)
+        return F.softmax(logits, dim=1)
+
+
+    def train(self, inputs, actions, advantages, entropy_weight):
+        inputs = torch.stack(inputs, dim=0)
+        advantages = torch.stack(advantages, dim=0)
+        # print(inputs.shape)
+        # rewards = torch.tensor(rewards, dtype=torch.float64)
+        # actions = torch.tensor(actions, dtype=torch.float64)
+
+        # We tell the model that it is training
+        self.model.train()
+
+        self.optimizer.zero_grad()
+
+        logits = self(inputs.permute(0,3,1,2))
+
+        policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
+        policy_loss.backward()
+        self.optimizer.step()
+
+        return entropy
+
+
+
+
 
     def predict(self, input):
         raise NotImplementedError
+
+    def save_ckpt(self, _print=True):
+        # Create a directory for saving checkpoints if it doesn't exist
+        if not os.path.exists(self.ckpt_dir):
+            os.makedirs(self.ckpt_dir)
+
+        # Save the model and other relevant information to a checkpoint file
+        checkpoint = {
+            'model_state_dict': self.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'step': self.step,
+        }
+
+        # Define the checkpoint file path (e.g., checkpoint.pth)
+        checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint_policy.pth')
+
+        # Save the checkpoint
+        torch.save(checkpoint, checkpoint_path)
+
+        if _print:
+            print("Saved checkpoint for step {}: {}".format(self.step, checkpoint_path))
