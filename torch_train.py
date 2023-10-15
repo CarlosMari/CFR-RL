@@ -206,9 +206,9 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             extended_state = torch.unsqueeze(state, 0).permute(0,3,1,2)
             #print(extended_state.shape)
             if config.method == 'actor_critic':
-                policy, _ = network(extended_state)
+                _, _, policy = network(extended_state)
             else:
-                policy = network(extended_state)
+                _, policy = network(extended_state)
         #assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
         #print(f'Policy: {policy.view(-1)}')
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)

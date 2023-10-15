@@ -201,9 +201,9 @@ class ActorCriticModel(Model):
         logits = logits.to(torch.float64)
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
-        logits = F.softmax(logits, dim=1)
+        policy = F.softmax(logits, dim=1)
         values = self.critic(inputs)
-        return logits, values
+        return logits, values, policy
 
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
@@ -222,7 +222,7 @@ class ActorCriticModel(Model):
 
         # We call the forward function and calculate the loss
         # [B, C_in, H, W]
-        logits, values = self(inputs.permute(0,3,1,2))
+        logits, values, policy = self(inputs.permute(0,3,1,2))
 
         # We calculate loss and advantages
         value_loss, advantages = self.value_loss_fn(rewards, values)
@@ -336,22 +336,19 @@ class PolicyModel(Model):
         logits = self.model(inputs).to(torch.float64)
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
-        return F.softmax(logits, dim=1)
+        return logits, F.softmax(logits, dim=1)
 
 
     def train(self, inputs, actions, advantages, entropy_weight):
         inputs = torch.stack(inputs, dim=0)
         advantages = torch.stack(advantages, dim=0)
-        # print(inputs.shape)
-        # rewards = torch.tensor(rewards, dtype=torch.float64)
-        # actions = torch.tensor(actions, dtype=torch.float64)
 
         # We tell the model that it is training
         self.model.train()
 
         self.optimizer.zero_grad()
 
-        logits = self(inputs.permute(0,3,1,2))
+        logits, policy = self(inputs.permute(0,3,1,2))
 
         policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
         policy_loss.backward()
