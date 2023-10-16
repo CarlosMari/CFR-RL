@@ -52,7 +52,6 @@ class Model(nn.Module, ABC):
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
-        # REVIEW ENTROPY CALCULATION
         entropy = F.cross_entropy(logits, policy)
         # entropy = nn.cross_entropy_loss(logits, policy)
         entropy = entropy.unsqueeze(-1)
@@ -68,10 +67,13 @@ class Model(nn.Module, ABC):
         )
 
         policy_loss = torch.sum(policy_loss, dim=1, keepdim=True)
+
+        # Why detaching the gradients of the advantages? -> Done in the original
         policy_loss = torch.multiply(policy_loss, (-advantages).detach())
 
         policy_loss -= entropy_weight * entropy
         policy_loss = torch.sum(policy_loss)
+        #print(f'Policy loss: {policy_loss}')
 
         return policy_loss, entropy
 
