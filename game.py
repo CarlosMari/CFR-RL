@@ -455,6 +455,8 @@ class CFRRL_Game(Game):
     def evaluate(self, tm_idx, actions=None, ecmp=True, eval_delay=False):
 
         # Evaluates traffic distribution, calculates MLU (Maximum Link Utilization) and the delay
+        # Line : Traffic Matrix Index | Normalized MLU | MLU | Normalized Critical MLU | Critical MLU |
+        #        Normalized TOPK MLU  | TOPK       MLU |
         if ecmp:
             ecmp_mlu, ecmp_delay = self.eval_ecmp_traffic_distribution(tm_idx, eval_delay=eval_delay)
 

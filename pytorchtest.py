@@ -5,19 +5,24 @@ from game import CFRRL_Game
 from torch_model import Model, ActorCriticModel, PolicyModel
 from config import get_config
 from absl import flags
-
+import torch
 FLAGS = flags.FLAGS
-flags.DEFINE_string('ckpt', '', 'apply a specific checkpoint')
+flags.DEFINE_string('ckpt', 'torch_ckpts/TE_v2-CFR-RL_actor_critic_Conv_Abilene_TM/checkpoint.pth', 'apply a specific checkpoint')
 flags.DEFINE_boolean('eval_delay', False, 'evaluate delay or not')
 
 def sim(config, network, game):
+
         for tm_idx in game.tm_indexes:
                 state = game.get_state(tm_idx)
-                policy = network.policy_predict(state.unsqueeze(0))[0].item()
-                actions = policy.argsort()[-game.max_moves:]
+                network.actor.eval()
+                network.critic.eval()
+                # Change it so it works with pure policy as well
+                _,_, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0,3,1,2))
+                actions = policy[0].argsort()[-game.max_moves:].numpy()
+                print(actions.shape)
                 game.evaluate(tm_idx, actions, eval_delay=FLAGS.eval_delay)
 
-def main():
+def main(_):
         torch.cuda.set_device(-1)
         config = get_config(FLAGS) or FLAGS
         env = Environment(config,is_training=True)
@@ -34,4 +39,4 @@ def main():
         sim(config, network, game)
 
 if __name__ == '__main__':
-        app.run(main)
+    app.run(main)

@@ -1,3 +1,5 @@
+from abc import ABC
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,11 +8,12 @@ import os
 import inspect
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import ExponentialLR
-#import torch.utils.tensorboard as tensorboard
+# import torch.utils.tensorboard as tensorboard
 import wandb
 from torchsummary import summary
 
-class Model(nn.Module):
+
+class Model(nn.Module, ABC):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
         super(Model, self).__init__()
         self.Conv2D_out = config.Conv2D_out  # Why are this parameters
@@ -21,8 +24,6 @@ class Model(nn.Module):
         self.max_moves = max_moves
         self.master = master
         self.model_name = f"{config.version}-{config.project_name}_{config.method}_{config.model_type}_{config.topology_file}_{config.traffic_file}"
-
-
 
     """ This 2 functions will be deleted
     def create_actor_critic_model(self, config):
@@ -43,23 +44,22 @@ class Model(nn.Module):
     def policy_loss_fn(self, logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12):
         # Review operations make sure they are correct
         actions = actions.view(-1, self.max_moves, self.action_dim)
-
         # Calculate policy
         policy = torch.softmax(logits, dim=1)  # Shape [batch_size, action_dim]
 
-        #print(f'Policy : {policy.shape}, Actions: {actions.shape} Advantages: {advantages.shape}')
+        # print(f'Policy : {policy.shape}, Actions: {actions.shape} Advantages: {advantages.shape}')
 
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
         # REVIEW ENTROPY CALCULATION
         entropy = F.cross_entropy(logits, policy)
-        #entropy = nn.cross_entropy_loss(logits, policy)
+        # entropy = nn.cross_entropy_loss(logits, policy)
         entropy = entropy.unsqueeze(-1)
         policy = policy.unsqueeze(-1)
 
-        #print(f' Actions shape: {actions.shape}')
-        #print(f' Policy shape: {policy.shape}')
+        # print(f' Actions shape: {actions.shape}')
+        # print(f' Policy shape: {policy.shape}')
 
         product = torch.matmul(actions, policy).squeeze()
         # Ensures the minimum is log_epilon
@@ -77,7 +77,6 @@ class Model(nn.Module):
 
     def get_weights(self):
         return self.state_dict()
-
 
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
         raise NotImplementedError
@@ -140,7 +139,7 @@ class ActorCriticModel(Model):
         self.Conv2D_out = config.Conv2D_out  # Why are this parameters
         self.Dense_out = config.Dense_out
         self.max_moves = max_moves
-        #print(f'Dimensions : {self.input_dim}')
+        # print(f'Dimensions : {self.input_dim}')
         self.actor = nn.Sequential(
             nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
             nn.LeakyReLU(),
@@ -149,8 +148,6 @@ class ActorCriticModel(Model):
             nn.LeakyReLU(),
             nn.Linear(self.Dense_out, self.action_dim),
         )
-
-
 
         self.critic = nn.Sequential(
             nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
@@ -185,18 +182,18 @@ class ActorCriticModel(Model):
 
     def initialize_optimizers(self):
         if self.config.optimizer == 'RMSprop':
-            self.actor_optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
-            self.critic_optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
+            self.actor_optimizer = optim.RMSprop(self.actor.parameters(), lr=self.config.initial_learning_rate)
+            self.critic_optimizer = optim.RMSprop(self.critic.parameters(), lr=self.config.initial_learning_rate)
         elif self.config.optimizer == 'Adam':
-            self.actor_optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
-            self.critic_optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
+            self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.config.initial_learning_rate)
+            self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.config.initial_learning_rate)
 
         self.lr_scheduler_actor = ExponentialLR(self.actor_optimizer, gamma=self.config.learning_rate_decay_rate)
         self.lr_scheduler_critic = ExponentialLR(self.critic_optimizer, gamma=self.config.learning_rate_decay_rate)
 
     def forward(self, inputs):
-        #print("Input type: ")
-        #print(type(inputs))
+        # print("Input type: ")
+        # print(type(inputs))
         logits = self.actor(inputs)
         logits = logits.to(torch.float64)
         if self.config.logit_clipping > 0:
@@ -208,9 +205,9 @@ class ActorCriticModel(Model):
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
         inputs = torch.stack(inputs, dim=0)
-        #print(inputs.shape)
-        #rewards = torch.tensor(rewards, dtype=torch.float64)
-        #actions = torch.tensor(actions, dtype=torch.float64)
+        # print(inputs.shape)
+        # rewards = torch.tensor(rewards, dtype=torch.float64)
+        # actions = torch.tensor(actions, dtype=torch.float64)
 
         # We tell the model that it is training
         self.actor.train()
@@ -222,7 +219,7 @@ class ActorCriticModel(Model):
 
         # We call the forward function and calculate the loss
         # [B, C_in, H, W]
-        logits, values, policy = self(inputs.permute(0,3,1,2))
+        logits, values, policy = self(inputs.permute(0, 3, 1, 2))
 
         # We calculate loss and advantages
         value_loss, advantages = self.value_loss_fn(rewards, values)
@@ -237,8 +234,8 @@ class ActorCriticModel(Model):
         # Value_loss, entropy, actor gradients and critic gradients.
         # We return the gradients for assert
         return value_loss.item(), entropy, [param.grad for param in self.actor.parameters()], [param.grad for
-                                                                                                      param in
-                                                                                                      self.critic.parameters()]
+                                                                                               param in
+                                                                                               self.critic.parameters()]
 
     def predict(self, input):
         """
@@ -257,7 +254,6 @@ class ActorCriticModel(Model):
     def restore_ckpt(self, checkpoint_path=None):
         if checkpoint_path is None:
             checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
-
 
         checkpoint = torch.load(checkpoint_path)
         self.load_state_dict(checkpoint['model_state_dict'])
@@ -290,7 +286,6 @@ class ActorCriticModel(Model):
 
 class PolicyModel(Model):
 
-
     def __init__(self, config, input_dim, action_dim, max_moves, master=True):
         super(PolicyModel, self).__init__(config, input_dim, action_dim, max_moves, master=master)
 
@@ -311,11 +306,12 @@ class PolicyModel(Model):
             self.optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
         elif config.optimizer == 'Adam':
             self.optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
+        else:
+            raise NotImplementedError
 
         self.lr_scheduler = ExponentialLR(self.optimizer, gamma=self.config.learning_rate_decay_rate)
 
         if master:
-
             ckpt_path = f'./torch_ckpts/{self.model_name}/Policy_model.pth'
 
             # Check if the directory exists, and create it if not
@@ -336,19 +332,21 @@ class PolicyModel(Model):
         logits = self.model(inputs).to(torch.float64)
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
+        # Returns logits, policy
         return logits, F.softmax(logits, dim=1)
-
 
     def train(self, inputs, actions, advantages, entropy_weight):
         inputs = torch.stack(inputs, dim=0)
-        advantages = torch.stack(advantages, dim=0)
+        #advantages = torch.stack(advantages, dim=0)
+        advantages = torch.tensor(advantages).unsqueeze(1)
+
 
         # We tell the model that it is training
         self.model.train()
 
         self.optimizer.zero_grad()
 
-        logits, policy = self(inputs.permute(0,3,1,2))
+        logits, policy = self(inputs.permute(0, 3, 1, 2))
 
         policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
         policy_loss.backward()
@@ -356,12 +354,6 @@ class PolicyModel(Model):
 
         return entropy
 
-
-
-
-
-    def predict(self, input):
-        raise NotImplementedError
 
     def save_ckpt(self, _print=True):
         # Create a directory for saving checkpoints if it doesn't exist

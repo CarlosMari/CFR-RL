@@ -14,7 +14,7 @@ from absl import flags
 import wandb
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 11, 'number of agents')
+flags.DEFINE_integer('num_agents', 10, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -22,6 +22,7 @@ CHECK_GRADIENTS = False
 
 def central_agent(config, game, model_weight_queues, experience_queues):
     if config.method == 'actor_critic':
+        print("Actor Critic Model")
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
     else:
         print("Policy Model")
@@ -209,7 +210,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
                 _, _, policy = network(extended_state)
             else:
                 _, policy = network(extended_state)
-        #assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
+        assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
         #print(f'Policy: {policy.view(-1)}')
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
         for a in actions:
