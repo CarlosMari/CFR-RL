@@ -14,7 +14,7 @@ from absl import flags
 import wandb
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 10, 'number of agents')
+flags.DEFINE_integer('num_agents', 11, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -28,6 +28,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
         print("Policy Model")
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    network.to(device)
     # We initialize wandb
     wandb.init(
         # set the wandb project where this run will be logged
@@ -172,11 +174,13 @@ def central_agent(config, game, model_weight_queues, experience_queues):
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
     print(f"Creating agent {agent_id}")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
-
+    network.to(device)
     # Initial synchronization of the model weights
     # I have to check the format of the weights in the queue
 
@@ -199,7 +203,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
     while True:
         tm_idx = tm_subset[idx]
-        state = torch.from_numpy(game.get_state(tm_idx))
+        state = torch.from_numpy(game.get_state(tm_idx)).to(network.device)
         s_batch.append(state)
         #print(f'State {state}' )
         with torch.no_grad():
@@ -210,9 +214,11 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
                 _, _, policy = network(extended_state)
             else:
                 _, policy = network(extended_state)
-        assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
+        assert np.count_nonzero(policy.cpu().numpy()[0]) >= game.max_moves, (policy, state)
         #print(f'Policy: {policy.view(-1)}')
-        actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
+        # Can be moved to torch most likely
+        #policy.view(-1).multinomial(num_samples=n, replacement=replace)
+        actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1).cpu(), replace=False)
         for a in actions:
             a_batch.append(a)
 
@@ -249,6 +255,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
         idx += 1
         if idx == num_tms:
+            #network.lr_scheduler.step()
             random_state.shuffle(tm_subset)
             idx = 0
 

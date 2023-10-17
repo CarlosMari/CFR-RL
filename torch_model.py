@@ -32,13 +32,17 @@ class Model(nn.Module, ABC):
     def create_policy_model(self, config):
         pass  # Implement the policy model architecture in PyTorch"""
 
+
+    def to(self, device):
+        self.device = device
+
     def initialize_optimizers(self):
         raise NotImplementedError
 
     def value_loss_fn(self, rewards, values):
-        rewards = torch.FloatTensor(rewards).unsqueeze(1)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         advantages = rewards - values
-        value_loss = advantages.pow(2).mean()
+        value_loss = torch.mean(torch.pow(advantages,2))
         return value_loss, advantages
 
     def policy_loss_fn(self, logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12):
@@ -196,7 +200,7 @@ class ActorCriticModel(Model):
     def forward(self, inputs):
         # print("Input type: ")
         # print(type(inputs))
-        logits = self.actor(inputs)
+        logits = self.actor(inputs.to(self.device))
         logits = logits.to(torch.float64)
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
@@ -206,7 +210,10 @@ class ActorCriticModel(Model):
 
     def train(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
-        inputs = torch.stack(inputs, dim=0)
+        inputs = torch.stack(inputs, dim=0).to(self.device)
+        actions = actions.to(self.device)
+        rewards = rewards.to(self.device)
+
         # print(inputs.shape)
         # rewards = torch.tensor(rewards, dtype=torch.float64)
         # actions = torch.tensor(actions, dtype=torch.float64)
@@ -221,7 +228,7 @@ class ActorCriticModel(Model):
 
         # We call the forward function and calculate the loss
         # [B, C_in, H, W]
-        logits, values, policy = self(inputs.permute(0, 3, 1, 2))
+        logits, values, policy = self(inputs.permute(0, 3, 1, 2).to(self.device))
 
         # We calculate loss and advantages
         value_loss, advantages = self.value_loss_fn(rewards, values)
@@ -331,16 +338,19 @@ class PolicyModel(Model):
                     print("There is no previous checkpoint, initializing...")
 
     def forward(self, inputs):
-        logits = self.model(inputs).to(torch.float64)
+        self.model.to(self.device)
+        #print(f'Device:  {self.device}')
+        logits = self.model(inputs)
+        logits = logits.to(self.device).double()
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
         # Returns logits, policy
         return logits, F.softmax(logits, dim=1)
 
     def train(self, inputs, actions, advantages, entropy_weight):
-        inputs = torch.stack(inputs, dim=0)
-        #advantages = torch.stack(advantages, dim=0)
-        advantages = torch.tensor(advantages).unsqueeze(1)
+        inputs = torch.stack(inputs, dim=0).to(self.device)
+        actions = actions.to(self.device)
+        advantages = torch.tensor(advantages).unsqueeze(1).to(self.device)
 
 
         # We tell the model that it is training
