@@ -23,7 +23,7 @@ def sim(config, network, game):
                 game.evaluate(tm_idx, actions, eval_delay=FLAGS.eval_delay)
 
 def main(_):
-        torch.cuda.set_device(-1)
+        #torch.cuda.set_device(-1)
         config = get_config(FLAGS) or FLAGS
         env = Environment(config,is_training=True)
         game = CFRRL_Game(config, env)

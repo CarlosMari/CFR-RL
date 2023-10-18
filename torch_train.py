@@ -28,7 +28,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
         print("Policy Model")
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = 'cpu'
     network.to(device)
     # We initialize wandb
     wandb.init(
@@ -174,8 +175,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
     print(f"Creating agent {agent_id}")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = 'cpu'
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
@@ -261,10 +262,9 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
 
 def main(_):
-    torch.cuda.set_device(-1)  # Set an invalid device number
+    #torch.cuda.set_device(-1)  # Set an invalid device number
 
-    # Set the logging level
-    torch.backends.cudnn.benchmark = False  # Disable CUDA optimizations for deterministic behavior
+    torch.backends.cudnn.benchmark = True  # Disable CUDA optimizations for deterministic behavior
     #torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
     torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
 

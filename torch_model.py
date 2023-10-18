@@ -57,6 +57,7 @@ class Model(nn.Module, ABC):
 
         # Calculate the entropy
         entropy = F.cross_entropy(logits, policy)
+        #entropy = F.cross_entropy(policy, policy)
         # entropy = nn.cross_entropy_loss(logits, policy)
         entropy = entropy.unsqueeze(-1)
         policy = policy.unsqueeze(-1)
