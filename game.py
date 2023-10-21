@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
+import wandb
 from tqdm import tqdm
 import numpy as np
 from pulp import LpMinimize, LpMaximize, LpProblem, LpStatus, lpSum, LpVariable, value, GLPK
-
+import wandb
 OBJ_EPSILON = 1e-12
 
 
@@ -483,11 +485,21 @@ class CFRRL_Game(Game):
         line += str(norm_crit_mlu) + ', ' + str(crit_mlu) + ', ' 
 
         norm_topk_mlu = optimal_mlu / topk_mlu
-        line += str(norm_topk_mlu) + ', ' + str(topk_mlu) + ', ' 
+        line += str(norm_topk_mlu) + ', ' + str(topk_mlu) + ', '
+
+        log = {'Traffic_Matrix_Index': tm_idx,
+               'Normalized MLU': norm_mlu,
+               'MLU': mlu,
+               'Normalized Critical MLU': norm_crit_mlu,
+               'Critical MLU': crit_mlu,
+               'Normalized TopK MLU': norm_topk_mlu,
+               'TopK MLU': topk_mlu}
 
         if ecmp:
             norm_ecmp_mlu = optimal_mlu / ecmp_mlu
             line += str(norm_ecmp_mlu) + ', ' + str(ecmp_mlu) + ', '
+            log['Normalized ECMP MLU'] = norm_ecmp_mlu
+            log['ECMP MLU'] = ecmp_mlu
 
         if eval_delay:
             solution = self.optimal_routing_delay(tm_idx)
@@ -503,4 +515,5 @@ class CFRRL_Game(Game):
             assert tm_idx in self.load_multiplier, (tm_idx)
             line += str(self.load_multiplier[tm_idx]) + ', '
 
-        print(line[:-2])
+        #print(line[:-2])
+        wandb.log(log)

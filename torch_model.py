@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
@@ -25,17 +25,12 @@ class Model(nn.Module, ABC):
         self.master = master
         self.model_name = f"{config.version}-{config.project_name}_{config.method}_{config.model_type}_{config.topology_file}_{config.traffic_file}"
 
-    """ This 2 functions will be deleted
-    def create_actor_critic_model(self, config):
-        pass  # Implement the actor-critic model architecture in PyTorch
-
-    def create_policy_model(self, config):
-        pass  # Implement the policy model architecture in PyTorch"""
-
+    @abstractmethod
     def initialize_optimizers(self):
         raise NotImplementedError
 
-    def value_loss_fn(self, rewards, values):
+    @staticmethod
+    def value_loss_fn(rewards, values):
         rewards = torch.FloatTensor(rewards).unsqueeze(1)
         advantages = rewards - values
         value_loss = advantages.pow(2).mean()
@@ -47,18 +42,14 @@ class Model(nn.Module, ABC):
         # Calculate policy
         policy = torch.softmax(logits, dim=1)  # Shape [batch_size, action_dim]
 
-        # print(f'Policy : {policy.shape}, Actions: {actions.shape} Advantages: {advantages.shape}')
-
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
         entropy = F.cross_entropy(logits, policy)
         # entropy = nn.cross_entropy_loss(logits, policy)
+
         entropy = entropy.unsqueeze(-1)
         policy = policy.unsqueeze(-1)
-
-        # print(f' Actions shape: {actions.shape}')
-        # print(f' Policy shape: {policy.shape}')
 
         product = torch.matmul(actions, policy).squeeze()
         # Ensures the minimum is log_epilon
@@ -73,7 +64,7 @@ class Model(nn.Module, ABC):
 
         policy_loss -= entropy_weight * entropy
         policy_loss = torch.sum(policy_loss)
-        #print(f'Policy loss: {policy_loss}')
+        # print(f'Policy loss: {policy_loss}')
 
         return policy_loss, entropy
 
@@ -254,14 +245,17 @@ class ActorCriticModel(Model):
         return policy, values.item()
 
     def restore_ckpt(self, checkpoint_path=None):
+
         if checkpoint_path is None:
             checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
 
         checkpoint = torch.load(checkpoint_path)
         self.load_state_dict(checkpoint['model_state_dict'])
+        # print(checkpoint['critic_optimizer_state_dict'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
         self.step = checkpoint['step']
+        print(f"Restoring Checkpoint.... Step: {self.step}")
 
     def save_ckpt(self, _print=True):
         # Create a directory for saving checkpoints if it doesn't exist
@@ -339,9 +333,8 @@ class PolicyModel(Model):
 
     def train(self, inputs, actions, advantages, entropy_weight):
         inputs = torch.stack(inputs, dim=0)
-        #advantages = torch.stack(advantages, dim=0)
+        # advantages = torch.stack(advantages, dim=0)
         advantages = torch.tensor(advantages).unsqueeze(1)
-
 
         # We tell the model that it is training
         self.model.train()
@@ -355,7 +348,6 @@ class PolicyModel(Model):
         self.optimizer.step()
 
         return entropy
-
 
     def save_ckpt(self, _print=True):
         # Create a directory for saving checkpoints if it doesn't exist
