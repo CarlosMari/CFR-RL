@@ -92,7 +92,17 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
                                                                                    r_batch, config.entropy_weight)
 
+            actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
+            avg_value_loss = np.mean(value_loss)
+            avg_reward = np.mean(r_batch)
+            avg_entropy = torch.mean(entropy)
 
+            log = {
+                    'learning_rate': actor_learning_rate,
+                    'loss': avg_value_loss,
+                    'reward': avg_reward,
+                    'entropy': avg_entropy
+                    }
 
             if CHECK_GRADIENTS:  # Checks if gradients are NaN
                 for g in actor_gradients:
@@ -125,31 +135,21 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                 for g in gradient:
                     assert not torch.isnan(g).any(), ('GRADIENTS', s_batch, a_batch, r_batch, entropy)
 
-        # Log training information - Should be moved to model.
-        if WANDB_LOG and step % LOG_STEPS == 0:
-            if config.method == "actor_critic":
-                actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
-                avg_value_loss = np.mean(value_loss)
-                avg_reward = np.mean(r_batch)
-                avg_entropy = torch.mean(entropy)
-
-                wandb.log({
-                    'learning_rate': actor_learning_rate,
-                    'loss': avg_value_loss,
-                    'reward': avg_reward,
-                    'entropy': avg_entropy
-                }, step=step+1)
-            else:
-                avg_reward = np.mean(r_batch)
-                avg_entropy = torch.mean(entropy)
-                learning_rate = network.lr_scheduler.get_last_lr()[0]
-                avg_advantage = np.mean(ad_batch)
-                wandb.log({
+            avg_reward = np.mean(r_batch)
+            avg_entropy = torch.mean(entropy)
+            learning_rate = network.lr_scheduler.get_last_lr()[0]
+            avg_advantage = np.mean(ad_batch)
+            log = {
                     'learning_rate': learning_rate,
                     'advantage': avg_advantage,
                     'reward': avg_reward,
                     'entropy': avg_entropy
-                }, step=step+1)
+                }
+
+        # Log training information - Should be moved to model.
+        if WANDB_LOG and step % LOG_STEPS == 0:
+            wandb.log(log, step=step+1)
+            
 
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
