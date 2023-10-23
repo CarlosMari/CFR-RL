@@ -29,6 +29,11 @@ class Model(nn.Module, ABC):
     def initialize_optimizers(self):
         raise NotImplementedError
 
+
+    @abstractmethod
+    def step_scheduler(self):
+        raise NotImplementedError
+
     @staticmethod
     def softmax_cross_entropy_with_logits(labels, logits, dim=-1):
         return (-labels * F.log_softmax(logits, dim=dim)).sum(dim=dim)
@@ -193,6 +198,10 @@ class ActorCriticModel(Model):
         self.lr_scheduler_actor = ExponentialLR(self.actor_optimizer, gamma=self.config.learning_rate_decay_rate)
         self.lr_scheduler_critic = ExponentialLR(self.critic_optimizer, gamma=self.config.learning_rate_decay_rate)
 
+    def step_scheduler(self):
+        self.lr_scheduler_critic.step()
+        self.lr_scheduler_actor.step()
+
     def forward(self, inputs):
         # print("Input type: ")
         # print(type(inputs))
@@ -306,15 +315,9 @@ class PolicyModel(Model):
             nn.LeakyReLU(),
             nn.Linear(self.Dense_out, self.action_dim),
         )
+        self.initialize_optimizers()
 
-        if config.optimizer == 'RMSprop':
-            self.optimizer = optim.RMSprop(self.model.parameters(), lr=self.config.initial_learning_rate)
-        elif config.optimizer == 'Adam':
-            self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.initial_learning_rate)
-        else:
-            raise NotImplementedError
 
-        self.lr_scheduler = ExponentialLR(self.optimizer, gamma=self.config.learning_rate_decay_rate)
 
         if master:
             self.initialize_weights()
@@ -349,7 +352,17 @@ class PolicyModel(Model):
         return logits, F.softmax(logits, dim=1)
 
     def initialize_optimizers(self):
-        raise NotImplementedError
+        if self.config.optimizer == 'RMSprop':
+            self.optimizer = optim.RMSprop(self.model.parameters(), lr=self.config.initial_learning_rate)
+        elif self.config.optimizer == 'Adam':
+            self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.initial_learning_rate)
+        else:
+            raise NotImplementedError
+
+        self.lr_scheduler = ExponentialLR(self.optimizer, gamma=self.config.learning_rate_decay_rate)
+
+    def step_scheduler(self):
+        self.lr_scheduler.step()
 
     def _train(self, inputs, actions, advantages, entropy_weight):
 

@@ -14,10 +14,11 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 11, 'number of agents')
+flags.DEFINE_integer('num_agents', 1, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
+
 
 CHECK_GRADIENTS = True
 WANDB_LOG = True
@@ -91,6 +92,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
                                                                                    r_batch, config.entropy_weight)
 
+
+
             if CHECK_GRADIENTS:  # Checks if gradients are NaN
                 for g in actor_gradients:
                     assert not torch.isnan(g).any(), ('actor_gradients', s_batch, a_batch, r_batch, entropy)
@@ -152,7 +155,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
         if step % config.save_step == config.save_step - 1:
             network.save_ckpt(_print=True)
             #print(np.mean(value_loss))
-
+        if step % config.learning_rate_decay_step == 0:
+            network.step_scheduler()
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
