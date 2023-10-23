@@ -14,12 +14,12 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 22, 'number of agents')
+flags.DEFINE_integer('num_agents', 11, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
 
-CHECK_GRADIENTS = False
+CHECK_GRADIENTS = True
 WANDB_LOG = True
 LOG_STEPS = 10
 
@@ -88,7 +88,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            value_loss, entropy, actor_gradients, critic_gradients = network.train(s_batch, actions,
+            value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
                                                                                    r_batch, config.entropy_weight)
 
             if CHECK_GRADIENTS:  # Checks if gradients are NaN
@@ -106,7 +106,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
 
             for i in range(FLAGS.num_agents):
                 s_batch_agent, a_batch_agent, r_batch_agent, ad_batch_agent = experience_queues[i].get()
-                s_batch += [torch.tensor(s, dtype=torch.float32) for s in s_batch_agent]
+                s_batch += [s.clone().detach() for s in s_batch_agent]
                 a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
                 r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
                 ad_batch += [torch.tensor(ad, dtype=torch.float32) for ad in ad_batch_agent]
@@ -116,7 +116,11 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            entropy = network.train(s_batch, actions, ad_batch, config.entropy_weight)
+            entropy, gradient = network._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight)
+
+            if CHECK_GRADIENTS:  # Checks if gradients are NaN
+                for g in gradient:
+                    assert not torch.isnan(g).any(), ('GRADIENTS', s_batch, a_batch, r_batch, entropy)
 
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
@@ -131,7 +135,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                     'loss': avg_value_loss,
                     'reward': avg_reward,
                     'entropy': avg_entropy
-                })
+                }, step=step+1)
             else:
                 avg_reward = np.mean(r_batch)
                 avg_entropy = torch.mean(entropy)
@@ -142,12 +146,12 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                     'advantage': avg_advantage,
                     'reward': avg_reward,
                     'entropy': avg_entropy
-                })
+                }, step=step+1)
 
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
             network.save_ckpt(_print=True)
-            print(np.mean(value_loss))
+            #print(np.mean(value_loss))
 
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):

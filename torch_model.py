@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 import wandb
 from torchsummary import summary
 
-
+import torch.nn.init as init
 class Model(nn.Module, ABC):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
         super(Model, self).__init__()
@@ -30,6 +30,10 @@ class Model(nn.Module, ABC):
         raise NotImplementedError
 
     @staticmethod
+    def softmax_cross_entropy_with_logits(labels, logits, dim=-1):
+        return (-labels * F.log_softmax(logits, dim=dim)).sum(dim=dim)
+
+    @staticmethod
     def value_loss_fn(rewards, values):
         rewards = torch.FloatTensor(rewards).unsqueeze(1)
         advantages = rewards - values
@@ -37,6 +41,8 @@ class Model(nn.Module, ABC):
         return value_loss, advantages
 
     def policy_loss_fn(self, logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12):
+
+        #print(f'Advantages shape {advantages.shape}') # AC -> (30,1), Pure Policy -> (30,1)
         # Review operations make sure they are correct
         actions = actions.view(-1, self.max_moves, self.action_dim)
         # Calculate policy
@@ -45,7 +51,9 @@ class Model(nn.Module, ABC):
         assert policy.shape[0] == actions.shape[0] and advantages.shape[0] == actions.shape[0]
 
         # Calculate the entropy
-        entropy = F.cross_entropy(logits, policy)
+        #entropy = F.cross_entropy(logits, policy)
+        entropy = self.softmax_cross_entropy_with_logits(policy,logits)
+
         # entropy = nn.cross_entropy_loss(logits, policy)
 
         entropy = entropy.unsqueeze(-1)
@@ -63,15 +71,16 @@ class Model(nn.Module, ABC):
         policy_loss = torch.multiply(policy_loss, (-advantages).detach())
 
         policy_loss -= entropy_weight * entropy
+        #print(f'Policy loss shape {policy_loss.shape}')
         policy_loss = torch.sum(policy_loss)
         # print(f'Policy loss: {policy_loss}')
-
+        #wandb.log({'policy_loss':policy_loss})
         return policy_loss, entropy
 
     def get_weights(self):
         return self.state_dict()
 
-    def train(self, inputs, actions, rewards, entropy_weight=0.01):
+    def _train(self, inputs, actions, rewards, entropy_weight=0.01):
         raise NotImplementedError
 
     def predict(self, input):
@@ -195,7 +204,7 @@ class ActorCriticModel(Model):
         values = self.critic(inputs)
         return logits, values, policy
 
-    def train(self, inputs, actions, rewards, entropy_weight=0.01):
+    def _train(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
         inputs = torch.stack(inputs, dim=0)
         # print(inputs.shape)
@@ -299,15 +308,16 @@ class PolicyModel(Model):
         )
 
         if config.optimizer == 'RMSprop':
-            self.optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
+            self.optimizer = optim.RMSprop(self.model.parameters(), lr=self.config.initial_learning_rate)
         elif config.optimizer == 'Adam':
-            self.optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
+            self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.initial_learning_rate)
         else:
             raise NotImplementedError
 
         self.lr_scheduler = ExponentialLR(self.optimizer, gamma=self.config.learning_rate_decay_rate)
 
         if master:
+            self.initialize_weights()
             ckpt_path = f'./torch_ckpts/{self.model_name}/Policy_model.pth'
 
             # Check if the directory exists, and create it if not
@@ -324,6 +334,13 @@ class PolicyModel(Model):
                     print(f'Path: {ckpt_path}')
                     print("There is no previous checkpoint, initializing...")
 
+    def initialize_weights(self):
+        for layer in self.model:
+            if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.Linear):
+                init.xavier_uniform(layer.weight)  # You can choose another initialization method if you prefer
+                if layer.bias is not None:
+                    init.constant_(layer.bias, 0)
+
     def forward(self, inputs):
         logits = self.model(inputs).to(torch.float64)
         if self.config.logit_clipping > 0:
@@ -331,12 +348,18 @@ class PolicyModel(Model):
         # Returns logits, policy
         return logits, F.softmax(logits, dim=1)
 
-    def train(self, inputs, actions, advantages, entropy_weight):
+    def initialize_optimizers(self):
+        raise NotImplementedError
+
+    def _train(self, inputs, actions, advantages, entropy_weight):
+
         inputs = torch.stack(inputs, dim=0)
         # advantages = torch.stack(advantages, dim=0)
-        advantages = torch.tensor(advantages).unsqueeze(1)
-
+        # Advantages shape?
+        #advantages = torch.tensor(advantages).unsqueeze(1)
+        advantages = torch.from_numpy(advantages)
         # We tell the model that it is training
+        self.train()
         self.model.train()
 
         self.optimizer.zero_grad()
@@ -347,7 +370,7 @@ class PolicyModel(Model):
         policy_loss.backward()
         self.optimizer.step()
 
-        return entropy
+        return entropy, [param.grad for param in self.model.parameters()]
 
     def save_ckpt(self, _print=True):
         # Create a directory for saving checkpoints if it doesn't exist

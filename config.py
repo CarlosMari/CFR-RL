@@ -1,54 +1,56 @@
 class NetworkConfig(object):
-  """
+    """
   Contains the necessary parameters/hyperparameters of the NN.
   """
-  scale = 100
+    scale = 100
 
-  max_step = 1000 * scale
-  
-  initial_learning_rate = 0.0001
-  learning_rate_decay_rate = 0.96
-  learning_rate_decay_step = 5 * scale
-  moving_average_decay = 0.9999
-  entropy_weight = 0.1
+    max_step = 1000 * scale
 
-  save_step = 10 * scale
-  max_to_keep = 1000
+    initial_learning_rate = 0.0001
+    learning_rate_decay_rate = 0.96
+    learning_rate_decay_step = 5 * scale
+    moving_average_decay = 0.9999
+    entropy_weight = 0.1
 
-  Conv2D_out = 128
-  Dense_out = 128
-  
-  optimizer = 'RMSprop'
-  #optimizer = 'Adam'
-    
-  logit_clipping = 10       #10 or 0, = 0 means logit clipping is disabled
+    save_step = 2.5 * scale
+    max_to_keep = 1000
+
+    Conv2D_out = 128
+    Dense_out = 128
+
+    optimizer = 'RMSprop'
+    # optimizer = 'Adam'
+
+    logit_clipping = 10  # 10 or 0, = 0 means logit clipping is disabled
+
 
 class Config(NetworkConfig):
-  version = 'TE_v2'
+    version = 'TE_v2'
 
-  project_name = 'CFR-RL'
+    project_name = 'CFR-RL'
 
-  method = 'actor_critic'
-  #method = 'pure_policy'
-  
-  model_type = 'Conv'
+    #method = 'actor_critic'
+    method = 'pure_policy'
 
-  topology_file = 'Abilene'
-  traffic_file = 'TM'
-  test_traffic_file = 'TM2'
+    model_type = 'Conv'
 
-  tm_history = 1
+    topology_file = 'Abilene'
+    traffic_file = 'TM'
+    test_traffic_file = 'TM2'
 
-  max_moves = 10            #percentage
+    tm_history = 1
 
-  # For pure policy
-  baseline = 'avg'          #avg, best
+    max_moves = 10  # percentage
+
+    # For pure policy
+    baseline = 'avg'  # avg, best
+
 
 def get_config(FLAGS):
-  config = Config
+    config = Config
 
-  for k, v in FLAGS.__flags.items():
-    if hasattr(config, k):
-      setattr(config, k, v.value)
+    for k, v in FLAGS.__flags.items():
+        if hasattr(config, k):
+            setattr(config, k, v.value)
 
-  return config
+    return config
