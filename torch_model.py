@@ -13,6 +13,8 @@ import wandb
 from torchsummary import summary
 
 import torch.nn.init as init
+from torch.profiler import profile, record_function, ProfilerActivity
+
 class Model(nn.Module, ABC):
     def __init__(self, config, input_dims, action_dim, max_moves, master=True):
         super(Model, self).__init__()
@@ -24,11 +26,18 @@ class Model(nn.Module, ABC):
         self.max_moves = max_moves
         self.master = master
         self.model_name = f"{config.version}-{config.project_name}_{config.method}_{config.model_type}_{config.topology_file}_{config.traffic_file}"
+        self.init_device()
 
     @abstractmethod
     def initialize_optimizers(self):
         raise NotImplementedError
 
+    def init_device(self):
+        if self.master:
+            self.device = 'cuda'
+        else:
+            self.device = 'cpu'
+        #print(f'Selected device: {self.device} for master = {self.master}')
 
     @abstractmethod
     def step_scheduler(self):
@@ -85,7 +94,7 @@ class Model(nn.Module, ABC):
     def get_weights(self):
         return self.state_dict()
 
-    def _train(self, inputs, actions, rewards, entropy_weight=0.01):
+    def trainer(self, inputs, actions, rewards, entropy_weight=0.01):
         raise NotImplementedError
 
     def predict(self, input):
@@ -154,7 +163,7 @@ class ActorCriticModel(Model):
             nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
             nn.LeakyReLU(),
             nn.Linear(self.Dense_out, self.action_dim),
-        )
+        ).to(self.device)
 
         self.critic = nn.Sequential(
             nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
@@ -164,7 +173,7 @@ class ActorCriticModel(Model):
             nn.LeakyReLU(),
             nn.Linear(self.Dense_out, 1)
 
-        )
+        ).to(self.device)
 
         # We create the optimizers
         self.initialize_optimizers()
@@ -213,7 +222,7 @@ class ActorCriticModel(Model):
         values = self.critic(inputs)
         return logits, values, policy
 
-    def _train(self, inputs, actions, rewards, entropy_weight=0.01):
+    def trainer(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
         inputs = torch.stack(inputs, dim=0)
         # print(inputs.shape)
@@ -244,9 +253,7 @@ class ActorCriticModel(Model):
 
         # Value_loss, entropy, actor gradients and critic gradients.
         # We return the gradients for assert
-        return value_loss.item(), entropy, [param.grad for param in self.actor.parameters()], [param.grad for
-                                                                                               param in
-                                                                                               self.critic.parameters()]
+        return value_loss.item(), entropy  #,[param.grad for param in self.actor.parameters()], [param.grad for param in self.critic.parameters()]
 
     def predict(self, input):
         """
@@ -314,9 +321,21 @@ class PolicyModel(Model):
             nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
             nn.LeakyReLU(),
             nn.Linear(self.Dense_out, self.action_dim),
-        )
-        self.initialize_optimizers()
+        ).to(self.device)
 
+        """self.model = nn.Sequential(
+            nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
+            nn.MaxPool()
+            nn.LeakyReLU(),
+            nn.Conv2d
+            
+            nn.Flatten(),
+            nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
+            nn.LeakyReLU(),
+            nn.Linear(self.Dense_out, self.action_dim),
+        )"""
+
+        self.initialize_optimizers()
 
 
         if master:
@@ -345,7 +364,7 @@ class PolicyModel(Model):
                     init.constant_(layer.bias, 0)
 
     def forward(self, inputs):
-        logits = self.model(inputs).to(torch.float64)
+        logits = self.model(inputs).double()
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
         # Returns logits, policy
@@ -364,13 +383,15 @@ class PolicyModel(Model):
     def step_scheduler(self):
         self.lr_scheduler.step()
 
-    def _train(self, inputs, actions, advantages, entropy_weight):
+    def trainer(self, inputs, actions, advantages, entropy_weight):
 
-        inputs = torch.stack(inputs, dim=0)
+        inputs = torch.stack(inputs, dim=0).to(self.device)
+        actions = actions.to(self.device)
+        #print(f"Device is {self.device}")
         # advantages = torch.stack(advantages, dim=0)
         # Advantages shape?
         #advantages = torch.tensor(advantages).unsqueeze(1)
-        advantages = torch.from_numpy(advantages)
+        advantages = torch.from_numpy(advantages).to(self.device)
         # We tell the model that it is training
         self.train()
         self.model.train()
@@ -383,7 +404,7 @@ class PolicyModel(Model):
         policy_loss.backward()
         self.optimizer.step()
 
-        return entropy, [param.grad for param in self.model.parameters()]
+        return entropy#, [param.grad for param in self.model.parameters()]
 
     def save_ckpt(self, _print=True):
         # Create a directory for saving checkpoints if it doesn't exist

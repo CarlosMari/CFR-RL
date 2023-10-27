@@ -12,16 +12,19 @@ import numpy as np
 from absl import app
 from absl import flags
 
+import torch
+from torch.profiler import profile, record_function, ProfilerActivity
+
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 1, 'number of agents')
+flags.DEFINE_integer('num_agents', 11, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
 
 
-CHECK_GRADIENTS = True
-WANDB_LOG = True
+CHECK_GRADIENTS = False
+WANDB_LOG = False
 LOG_STEPS = 10
 
 if WANDB_LOG:
@@ -66,6 +69,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             model_weight_queues[i].join()
 
         # ACTOR-CRITIC ALGORITHM
+
         if config.method == "actor_critic":
             # Assemble experiences from the agents
             s_batch = []
@@ -89,8 +93,9 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
-                                                                                   r_batch, config.entropy_weight)
+
+            value_loss, entropy = network.trainer(s_batch, actions,
+                                                  r_batch, config.entropy_weight)
 
             actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
             avg_value_loss = np.mean(value_loss)
@@ -103,15 +108,17 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                     'reward': avg_reward,
                     'entropy': avg_entropy
                     }
-
+            """
             if CHECK_GRADIENTS:  # Checks if gradients are NaN
                 for g in actor_gradients:
                     assert not torch.isnan(g).any(), ('actor_gradients', s_batch, a_batch, r_batch, entropy)
                 for g in critic_gradients:
                     assert not torch.isnan(g).any(), ('critic_gradients', s_batch, a_batch, r_batch, entropy)
-
+            """
         # REINFORCE
         elif config.method == 'pure_policy':
+            #with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
+            #    with record_function("train_loop"):
             s_batch = []
             a_batch = []
             r_batch = []
@@ -129,11 +136,12 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            entropy, gradient = network._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight)
+            #print(f'Master; {network.master}, device: {network.device}')
+            entropy = network.trainer(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight)
 
-            if CHECK_GRADIENTS:  # Checks if gradients are NaN
+            """if CHECK_GRADIENTS:  # Checks if gradients are NaN
                 for g in gradient:
-                    assert not torch.isnan(g).any(), ('GRADIENTS', s_batch, a_batch, r_batch, entropy)
+                    assert not torch.isnan(g).any(), ('GRADIENTS', s_batch, a_batch, r_batch, entropy)"""
 
             avg_reward = np.mean(r_batch)
             avg_entropy = torch.mean(entropy)
@@ -146,10 +154,12 @@ def central_agent(config, game, model_weight_queues, experience_queues):
                     'entropy': avg_entropy
                 }
 
+        #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
             wandb.log(log, step=step+1)
-            
+
 
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
@@ -167,7 +177,6 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
 
     # Initial synchronization of the model weights
-    # I have to check the format of the weights in the queue
 
     model_weights = model_weight_queues.get()
     model_weight_queues.task_done()
@@ -255,10 +264,9 @@ def main(_):
     model_weights_queues = []
     experience_queues = []
     if FLAGS.num_agents == 0 or FLAGS.num_agents >= mp.cpu_count():
-        # FLAGS.num_agents = mp.cpu_count() - 1
-        pass
+        FLAGS.num_agents = mp.cpu_count() - 1
 
-        # FLAGS.num_agents = 1
+
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
     for _ in range(FLAGS.num_agents):
