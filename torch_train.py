@@ -14,7 +14,7 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 1, 'number of agents')
+flags.DEFINE_integer('num_agents', 11, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -46,6 +46,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             config={
                 "learning_rate": network.config.initial_learning_rate,
                 "dataset": network.config.topology_file,
+                "TM": network.config.traffic_file,
                 "architecture": network.config.model_type,
                 "steps": network.config.max_step,
                 "agents": FLAGS.num_agents,
@@ -155,8 +156,8 @@ def central_agent(config, game, model_weight_queues, experience_queues):
         if step % config.save_step == config.save_step - 1:
             network.save_ckpt(_print=True)
             #print(np.mean(value_loss))
-        if step % config.learning_rate_decay_step == 0:
-            network.step_scheduler()
+        """if step % config.learning_rate_decay_step == 0:
+            network.step_scheduler()"""
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)

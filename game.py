@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import os
 
+import networkx as nx
+
 import wandb
 from tqdm import tqdm
 import numpy as np
@@ -88,7 +90,11 @@ class Game(object):
         self.pair_links = [(pr, e[0], e[1]) for pr in self.lp_pairs for e in self.lp_links]
 
         self.load_multiplier = {}
-        
+
+
+    def get_topology(self):
+        return nx.to_numpy_array(self.DG)
+    
     def generate_inputs(self, normalization=True):
         self.normalized_traffic_matrices = np.zeros((self.valid_tm_cnt, self.traffic_matrices_dims[1], self.traffic_matrices_dims[2], self.tm_history), dtype=np.float32)   #tm state  [Valid_tms, Node, Node, History]
         idx_offset = self.tm_history - 1
@@ -306,7 +312,7 @@ class Game(object):
 
         # Solve the problem
         model.solve(solver=GLPK(msg=False))
-        assert LpStatus[model.status] == 'Optimal'
+        assert LpStatus[model.status] == 'Optimal', LpStatus[model.status]
 
         obj_r = r.value()
         solution = {}

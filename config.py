@@ -35,8 +35,10 @@ class Config(NetworkConfig):
     model_type = 'Conv'
 
     topology_file = 'Abilene'
-    traffic_file = 'TM'
-    test_traffic_file = 'TM2'
+    #topology_file = 'RanGen'
+
+    traffic_file = 'TSE+TSRG2'
+    test_traffic_file = 'TM'
 
     tm_history = 1
 

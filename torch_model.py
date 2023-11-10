@@ -321,7 +321,7 @@ class PolicyModel(Model):
 
         if master:
             self.initialize_weights()
-            ckpt_path = f'./torch_ckpts/{self.model_name}/Policy_model.pth'
+            ckpt_path = f'./torch_ckpts/{self.model_name}/checkpoint_policy.pth'
 
             # Check if the directory exists, and create it if not
             self.ckpt_dir = os.path.dirname(ckpt_path)
@@ -384,6 +384,18 @@ class PolicyModel(Model):
         self.optimizer.step()
 
         return entropy, [param.grad for param in self.model.parameters()]
+
+    def restore_ckpt(self, checkpoint_path=None):
+        if checkpoint_path is None:
+            checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
+
+        checkpoint = torch.load(checkpoint_path)
+        self.load_state_dict(checkpoint['model_state_dict'])
+        # print(checkpoint['critic_optimizer_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.step = checkpoint['step']
+        print(f"Restoring Checkpoint.... Step: {self.step}")
+
 
     def save_ckpt(self, _print=True):
         # Create a directory for saving checkpoints if it doesn't exist

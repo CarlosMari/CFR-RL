@@ -10,7 +10,7 @@ import wandb
 from tqdm import tqdm
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('ckpt', 'torch_ckpts/TE_v2-CFR-RL_actor_critic_Conv_Abilene_TM/checkpoint_ac.pth', 'apply a specific checkpoint')
+flags.DEFINE_string('ckpt', './torch_ckpts/TE_v2-CFR-RL_pure_policy_Conv_Abilene_TSE+TSRG2\checkpoint_policy.pth', 'apply a specific checkpoint')
 flags.DEFINE_boolean('eval_delay', False, 'evaluate delay or not')
 
 def sim(config, network, game):
@@ -33,7 +33,7 @@ def sim(config, network, game):
 def main(_):
         torch.cuda.set_device(-1)
         config = get_config(FLAGS) or FLAGS
-        env = Environment(config,is_training=True)
+        env = Environment(config, is_training=False)
         game = CFRRL_Game(config, env)
 
         if config.method == 'actor_critic':
@@ -51,7 +51,9 @@ def main(_):
                         "architecture": network.config.model_type,
                         "steps": network.config.max_step,
                         "method": network.config.method,
-                        "framework": "Tensorflow",
+                        "framework": "Pytorch",
+                        "test_matrix": network.config.test_traffic_file,
+                        "train_matrix": network.config.traffic_file,
                 }
         )
         _ = network.restore_ckpt(FLAGS.ckpt)

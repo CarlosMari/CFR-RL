@@ -44,7 +44,10 @@ class Topology(object):
 
         #nx.draw_networkx(self.DG)
         #plt.show()
-    
+
+    def get_topology(self):
+        return nx.to_numpy_matrix(self.DG)
+
     def calculate_paths(self):
         self.pair_idx_to_sd = []
         self.pair_sd_to_idx = {}
@@ -98,6 +101,10 @@ class Traffic(object):
             self.traffic_file = data_dir + config.topology_file + config.traffic_file
         else:
             self.traffic_file = data_dir + config.topology_file + config.test_traffic_file
+
+        print("Is training")
+        print(is_training)
+        print(self.traffic_file)
         self.num_nodes = num_nodes
         self.load_traffic(config)
 
@@ -164,3 +171,6 @@ class Environment(object):
                 #print(i, j, edge_paths[i][j])
 
         return edge_paths
+
+    def get_topology(self):
+        return self.topology.get_topology()
