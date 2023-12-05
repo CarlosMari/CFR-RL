@@ -1,0 +1,4 @@
+Toplogy Legend:
+Topologies not indicated here are randomly generated.
+0 -> Abilene (Testing)
+2 -> BSO

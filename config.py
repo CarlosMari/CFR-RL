@@ -25,20 +25,22 @@ class NetworkConfig(object):
 
 
 class Config(NetworkConfig):
-    version = 'TE_v2'
+    version = 'TE_v3.2.3_Beta'
 
     project_name = 'CFR-RL'
 
     #method = 'actor_critic'
     method = 'pure_policy'
 
-    model_type = 'Conv'
+    model_type = 'Conv+Mat+Scaled_BaseReward'
 
+    topology_file = 'BSO'
     topology_file = 'Abilene'
-    #topology_file = 'RanGen'
 
-    traffic_file = 'TSE+TSRG2'
+    traffic_file = 'TM2'
     test_traffic_file = 'TM'
+
+    num_topologies = 4
 
     tm_history = 1
 

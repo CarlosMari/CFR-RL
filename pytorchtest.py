@@ -10,20 +10,21 @@ import wandb
 from tqdm import tqdm
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('ckpt', './torch_ckpts/TE_v2-CFR-RL_pure_policy_Conv_Abilene_TSE+TSRG2\checkpoint_policy.pth', 'apply a specific checkpoint')
+flags.DEFINE_string('ckpt', './torch_ckpts/TE_v3.1_Beta-CFR-RL_pure_policy_Conv+Mat+Scaled_Abilene_TM2\checkpoint_policy.pth', 'apply a specific checkpoint')
 flags.DEFINE_boolean('eval_delay', False, 'evaluate delay or not')
 
 def sim(config, network, game):
 
         for tm_idx in tqdm(game.tm_indexes):
                 state = game.get_state(tm_idx)
+                mat = game.get_topology()
                 if config.method == 'actor_critic':
                         network.actor.eval()
                         network.critic.eval()
-                        _, _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2))
+                        _, _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2),torch.from_numpy(mat.flatten()))
                 else:
-                        network.model.eval()
-                        _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2))
+                        network.eval()
+                        _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2),torch.from_numpy(mat.flatten()))
                 # Change it so it works with pure policy as well
 
                 actions = policy[0].argsort()[-game.max_moves:].numpy()

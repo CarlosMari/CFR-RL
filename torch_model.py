@@ -24,6 +24,7 @@ class Model(nn.Module, ABC):
         self.max_moves = max_moves
         self.master = master
         self.model_name = f"{config.version}-{config.project_name}_{config.method}_{config.model_type}_{config.topology_file}_{config.traffic_file}"
+        self.device = 'cuda'
 
     @abstractmethod
     def initialize_optimizers(self):
@@ -44,6 +45,10 @@ class Model(nn.Module, ABC):
         advantages = rewards - values
         value_loss = advantages.pow(2).mean()
         return value_loss, advantages
+
+
+    def to(self, device):
+        self.device = device
 
     def policy_loss_fn(self, logits, actions, advantages, entropy_weight=0.01, log_epsilon=1e-12):
 
@@ -209,6 +214,7 @@ class ActorCriticModel(Model):
         logits = logits.to(torch.float64)
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
+
         policy = F.softmax(logits, dim=1)
         values = self.critic(inputs)
         return logits, values, policy
@@ -307,14 +313,26 @@ class PolicyModel(Model):
         self.action_dim = action_dim
         self.config = self.config
 
-        self.model = nn.Sequential(
+        self.conv_block = nn.Sequential(
             nn.Conv2d(self.input_dim[2], self.Conv2D_out, kernel_size=3, padding=1),
+            #nn.LayerNorm((self.Conv2D_out, 12, 12)),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], self.Dense_out),
+            nn.Linear(self.Conv2D_out * self.input_dim[0] * self.input_dim[1], 144),
             nn.LeakyReLU(),
-            nn.Linear(self.Dense_out, self.action_dim),
         )
+
+        """self.conv_block2 = nn.Sequential(
+            nn.Conv2d(1, 10, kernel_size=3, padding=1),
+            nn.LayerNorm((10, 12, 12)),
+            nn.LeakyReLU(),
+            nn.Flatten(),
+            nn.Linear(10*12*12, 144),
+            nn.LeakyReLU(),
+        )"""
+        #288
+        self.action_layer = nn.Linear(144, action_dim, dtype=torch.float64)
+
         self.initialize_optimizers()
 
 
@@ -337,25 +355,63 @@ class PolicyModel(Model):
                     print(f'Path: {ckpt_path}')
                     print("There is no previous checkpoint, initializing...")
 
+    def forward(self, inputs, mat):
+
+        #print("Parmeters==================================")
+        #print(sum(p.numel() for p in self.parameters() if p.requires_grad))
+        #print("Conv 1")
+        #print(sum(p.numel() for p in self.conv_block.parameters() if p.requires_grad) + sum(p.numel() for p in self.action_layer.parameters() if p.requires_grad))
+
+        #print(self.parameters())
+
+        #inputs = F.normalize(inputs, p=2, dim=1).to(self.device)
+        inputs = inputs.to(self.device)
+        mat = mat.to(self.device)
+        self.conv_block.to(self.device)
+        #self.conv_block2.to(self.device)
+        self.action_layer.to(self.device)
+
+        x = self.conv_block(inputs)
+
+        if len(mat.shape) == 1:
+            mat = mat.view(1,1,12,12)
+        else:
+            mat = mat.unsqueeze(0)
+            mat = mat.permute(1,0,2,3) # To get batches first
+
+        """mat = F.normalize(mat, p=2, dim=1).to(torch.float32)
+        mat = self.conv_block2(mat)"""
+        #mat = mat.view(x.size())
+
+        """ mat = self.conv_block2(mat.to(torch.float32))"""
+        #assert mat.shape == x.shape, f'{mat.shape} {x.shape}'
+
+        #x = torch.cat([x, mat], dim=1).to(torch.double)
+        logits = self.action_layer(x.to(torch.double))
+        if self.config.logit_clipping > 0:
+            logits = self.config.logit_clipping * torch.tanh(logits)
+        # Returns logits, policy
+        policy = F.softmax(logits, dim=1)
+        #print(policy.shape)
+        return logits.cpu(), policy.cpu()
+
     def initialize_weights(self):
-        for layer in self.model:
+        for layer in self.conv_block:
             if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.Linear):
                 init.xavier_uniform(layer.weight)  # You can choose another initialization method if you prefer
                 if layer.bias is not None:
                     init.constant_(layer.bias, 0)
-
-    def forward(self, inputs):
-        logits = self.model(inputs).to(torch.float64)
-        if self.config.logit_clipping > 0:
-            logits = self.config.logit_clipping * torch.tanh(logits)
-        # Returns logits, policy
-        return logits, F.softmax(logits, dim=1)
+        """for layer in self.conv_block2:
+            if isinstance(layer, nn.Conv2d) or isinstance(layer, nn.Linear):
+                init.xavier_uniform(layer.weight)  # You can choose another initialization method if you prefer
+                if layer.bias is not None:
+                    init.constant_(layer.bias, 0)"""
 
     def initialize_optimizers(self):
         if self.config.optimizer == 'RMSprop':
-            self.optimizer = optim.RMSprop(self.model.parameters(), lr=self.config.initial_learning_rate)
+            self.optimizer = optim.RMSprop(self.parameters(), lr=self.config.initial_learning_rate)
         elif self.config.optimizer == 'Adam':
-            self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.initial_learning_rate)
+            self.optimizer = optim.Adam(self.parameters(), lr=self.config.initial_learning_rate)
         else:
             raise NotImplementedError
 
@@ -364,26 +420,29 @@ class PolicyModel(Model):
     def step_scheduler(self):
         self.lr_scheduler.step()
 
-    def _train(self, inputs, actions, advantages, entropy_weight):
+    def _train(self, inputs, actions, advantages, entropy_weight, mats):
 
+        mats = torch.stack(mats, dim=0)
+        #print(f"Shape of mats: {mats.shape}")
         inputs = torch.stack(inputs, dim=0)
+        #print(f"INputs shape: {inputs.shape}")
         # advantages = torch.stack(advantages, dim=0)
         # Advantages shape?
         #advantages = torch.tensor(advantages).unsqueeze(1)
         advantages = torch.from_numpy(advantages)
         # We tell the model that it is training
         self.train()
-        self.model.train()
+        self.conv_block.train()
 
         self.optimizer.zero_grad()
 
-        logits, policy = self(inputs.permute(0, 3, 1, 2))
+        logits, policy = self(inputs.permute(0, 3, 1, 2), mats)
 
         policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
         policy_loss.backward()
         self.optimizer.step()
 
-        return entropy, [param.grad for param in self.model.parameters()]
+        return entropy #,[param.grad for param in self.model.parameters()]
 
     def restore_ckpt(self, checkpoint_path=None):
         if checkpoint_path is None:

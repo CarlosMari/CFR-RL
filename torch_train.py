@@ -1,3 +1,4 @@
+import pylab as p
 import torch
 from tqdm import tqdm
 # import multiprocessing as mp
@@ -14,8 +15,8 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 11, 'number of agents')
-flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseleine')
+flags.DEFINE_integer('num_agents', 12, 'number of agents')
+flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
 
@@ -28,7 +29,8 @@ if WANDB_LOG:
     import wandb
 
 
-def central_agent(config, game, model_weight_queues, experience_queues):
+def central_agent(config, games, model_weight_queues, experience_queues):
+    game = games[0]
     if config.method == 'actor_critic':
         print("Actor Critic Model")
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
@@ -58,7 +60,7 @@ def central_agent(config, game, model_weight_queues, experience_queues):
     network.save_hyperparams(config)
     # network.restore_ckpt()
 
-    # Initial step from checkpoint should be implemented
+    # Initial step from checkpozint should be implemented
     for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
         network.step += 1
         model_weights = network.get_weights()
@@ -107,24 +109,26 @@ def central_agent(config, game, model_weight_queues, experience_queues):
             a_batch = []
             r_batch = []
             ad_batch = []
-
+            #mat = game.get_topology()
+            mats = []
+            #print(mat)
             for i in range(FLAGS.num_agents):
-                s_batch_agent, a_batch_agent, r_batch_agent, ad_batch_agent = experience_queues[i].get()
+                s_batch_agent, a_batch_agent, r_batch_agent, ad_batch_agent, mat_batch_agent = experience_queues[i].get()
                 s_batch += [s.clone().detach() for s in s_batch_agent]
                 a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
                 r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
                 ad_batch += [torch.tensor(ad, dtype=torch.float32) for ad in ad_batch_agent]
+                mats += [torch.tensor(mat) for mat in mat_batch_agent]
 
             assert len(s_batch) * game.max_moves == len(a_batch)
+
+
 
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            entropy, gradient = network._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight)
+            entropy = network._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight, mats)
 
-            if CHECK_GRADIENTS:  # Checks if gradients are NaN
-                for g in gradient:
-                    assert not torch.isnan(g).any(), ('GRADIENTS', s_batch, a_batch, r_batch, entropy)
 
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
@@ -169,7 +173,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
     # Initial synchronization of the model weights
     # I have to check the format of the weights in the queue
-
+    mat = torch.from_numpy(game.get_topology().flatten())
     model_weights = model_weight_queues.get()
     model_weight_queues.task_done()
     network.load_state_dict(model_weights)
@@ -178,6 +182,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
     s_batch = []
     a_batch = []
     r_batch = []
+    mat_batch = []
     if config.method == 'pure_policy':
         ad_batch = []
     run_iteration_idx = 0
@@ -196,14 +201,18 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             if config.method == 'actor_critic':
                 _, _, policy = network(extended_state)
             else:
-                _, policy = network(extended_state)
+                logits, policy = network(extended_state, mat)
 
         assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
-
+        #print(game.env.topology_name)
+        #print(extended_state)
+        #print(logits)
+        #print(policy.view(-1))
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
         for a in actions:
             a_batch.append(a)
 
+        mat_batch.append(game.get_topology())
         # Rewards
         reward = game.reward(tm_idx, actions)
         r_batch.append(reward)
@@ -217,9 +226,9 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         run_iteration_idx += 1
         if run_iteration_idx >= run_iterations:
             if config.method == 'actor_critic':
-                experience_queue.put([s_batch, a_batch, r_batch])
+                experience_queue.put([s_batch, a_batch, r_batch, mat_batch])
             elif config.method == 'pure_policy':
-                experience_queue.put([s_batch, a_batch, r_batch, ad_batch])
+                experience_queue.put([s_batch, a_batch, r_batch, ad_batch, mat_batch])
 
             model_weights = model_weight_queues.get()
             model_weight_queues.task_done()
@@ -228,6 +237,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             del s_batch[:]
             del a_batch[:]
             del r_batch[:]
+            del mat_batch[:]
 
             if config.method == 'pure_policy':
                 del ad_batch[:]
@@ -251,10 +261,11 @@ def main(_):
 
     config = get_config(FLAGS) or FLAGS
 
-    env = Environment(config, is_training=True)
-    game = CFRRL_Game(config, env)
+    #env = Environment(config,topology='topology_0', is_training=True)
+    #game = CFRRL_Game(config, env)
     model_weights_queues = []
     experience_queues = []
+    games = []
     if FLAGS.num_agents == 0 or FLAGS.num_agents >= mp.cpu_count():
         # FLAGS.num_agents = mp.cpu_count() - 1
         pass
@@ -262,20 +273,24 @@ def main(_):
         # FLAGS.num_agents = 1
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
-    for _ in range(FLAGS.num_agents):
+    for i in range(FLAGS.num_agents):
+        env = Environment(config, topology='topology_0', is_training=True)
+        #env = Environment(config, topology=f'topology_{i+1}', is_training=True)
+        game = CFRRL_Game(config, env)
+        games.append(game)
         model_weights_queues.append(mp.JoinableQueue(1))
         experience_queues.append(mp.Queue(1))
 
     # Why not just create a bigger batch_size and use GPU
     tm_subsets = np.array_split(game.tm_indexes, FLAGS.num_agents)
-    coordinator = mp.Process(target=central_agent, args=(config, game, model_weights_queues, experience_queues))
+    coordinator = mp.Process(target=central_agent, args=(config, games, model_weights_queues, experience_queues))
 
     coordinator.start()
 
     agents = []
     for i in range(FLAGS.num_agents):
         agents.append(mp.Process(target=agent,
-                                 args=(i, config, game, tm_subsets[i], model_weights_queues[i], experience_queues[i])))
+                                 args=(i, config, games[i], tm_subsets[i], model_weights_queues[i], experience_queues[i])))
 
     for i in range(FLAGS.num_agents):
         agents[i].start()
