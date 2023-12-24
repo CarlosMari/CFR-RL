@@ -25,14 +25,14 @@ class NetworkConfig(object):
 
 
 class Config(NetworkConfig):
-    version = 'TE_v3.2.3_Beta'
+    version = '4.1.2'
 
-    project_name = 'CFR-RL'
+    project_name = 'CFR-RL-GPU'
 
     #method = 'actor_critic'
     method = 'pure_policy'
 
-    model_type = 'Conv+Mat+Scaled_BaseReward'
+    model_type = 'Embed'
 
     topology_file = 'BSO'
     topology_file = 'Abilene'

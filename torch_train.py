@@ -5,7 +5,9 @@ from tqdm import tqdm
 import torch.multiprocessing as mp
 import sys
 from game import CFRRL_Game
-from torch_model import PolicyModel, ActorCriticModel
+
+from actor_critic import ActorCriticModel
+from policy import PolicyModel
 from game import CFRRL_Game
 from env import Environment
 from config import get_config
@@ -165,12 +167,12 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
-    print(f"Creating agent {agent_id}")
+
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
-
+    print(f"Creating agent {agent_id}, using {network.device}")
     # Initial synchronization of the model weights
     # I have to check the format of the weights in the queue
     mat = torch.from_numpy(game.get_topology().flatten())
@@ -252,12 +254,12 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
 
 def main(_):
-    torch.cuda.set_device(-1)  # Set an invalid device number
-
+    #torch.cuda.set_device(-1)  # Set an invalid device number
+    torch.autograd.set_detect_anomaly(True)
     # Set the logging level
-    torch.backends.cudnn.benchmark = False  # Disable CUDA optimizations for deterministic behavior
+    torch.backends.cudnn.benchmark = True # False  # Disable CUDA optimizations for deterministic behavior
     # torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
-    torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
+    #torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
 
     config = get_config(FLAGS) or FLAGS
 
@@ -274,8 +276,8 @@ def main(_):
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
     for i in range(FLAGS.num_agents):
-        env = Environment(config, topology='topology_0', is_training=True)
-        #env = Environment(config, topology=f'topology_{i+1}', is_training=True)
+        #env = Environment(config, topology='topology_6', is_training=True)
+        env = Environment(config, topology=f'topology_{i+1}', is_training=True)
         game = CFRRL_Game(config, env)
         games.append(game)
         model_weights_queues.append(mp.JoinableQueue(1))

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 class Topology(object):
     def __init__(self, data_dir='./resources/', topology='Abilene'):
+        topology = 'topology_0'
         self.topology_file = data_dir + 'topologies/' + topology
         self.shortest_paths_file = f'./resources/shortest_path/{topology}'
 
@@ -107,9 +108,10 @@ class Traffic(object):
     def __init__(self, config, num_nodes, data_dir='./resources/',topology='Abilene', is_training=False):
         if is_training:
             self.traffic_file = './resources/tms/' + topology + '_TM'
+
         else:
-            self.traffic_file = './resources/tms/AbileneTM'
-        self.traffic_file = './resources/tms/AbileneTM'
+            self.traffic_file = './resources/tms/AbileneTM2'
+        #self.traffic_file = './resources/tms/AbileneTM'
 
         print(self.traffic_file)
         #print("Is training")
