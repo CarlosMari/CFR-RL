@@ -25,9 +25,9 @@ class NetworkConfig(object):
 
 
 class Config(NetworkConfig):
-    version = '4.1.2'
+    version = '4.2.2'
 
-    project_name = 'CFR-RL-GPU'
+    project_name = 'CFR-RL'
 
     #method = 'actor_critic'
     method = 'pure_policy'

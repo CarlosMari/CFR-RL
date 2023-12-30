@@ -11,7 +11,7 @@ import wandb
 from tqdm import tqdm
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('ckpt', './torch_ckpts/4.1.1-CFR-RL_pure_policy_Embed_Abilene_TM2\checkpoint_policy.pth', 'apply a specific checkpoint')
+flags.DEFINE_string('ckpt', './torch_ckpts/4.2.2\checkpoint_policy_8k.pth', 'apply a specific checkpoint')
 flags.DEFINE_boolean('eval_delay', False, 'evaluate delay or not')
 
 def sim(config, network, game):

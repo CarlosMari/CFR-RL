@@ -8,9 +8,9 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
-class Topology(object):
+class Topology():
     def __init__(self, data_dir='./resources/', topology='Abilene'):
-        topology = 'topology_0'
+        #topology = 'topology_0'
         self.topology_file = data_dir + 'topologies/' + topology
         self.shortest_paths_file = f'./resources/shortest_path/{topology}'
 

@@ -62,7 +62,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
     network.save_hyperparams(config)
     # network.restore_ckpt()
 
-    # Initial step from checkpozint should be implemented
+    # Initial step from checkpoint should be implemented
     for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
         network.step += 1
         model_weights = network.get_weights()
@@ -85,14 +85,14 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
                 # Convert lists to PyTorch tensors and concatenate
                 s_batch += [s.clone().detach() for s in s_batch_agent]
-                a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
-                r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
+                a_batch += [torch.tensor(a, dtype=torch.int32) for a in a_batch_agent]
+                r_batch += [torch.tensor(r, dtype=torch.float32) for r in r_batch_agent]
 
             assert len(s_batch) * game.max_moves == len(a_batch)
 
             # Convert 'a_batch' to one-hot encoded tensors
             action_dim = game.action_dim
-            actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
+            actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float32)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
             value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
                                                                                    r_batch, config.entropy_weight)
@@ -257,9 +257,12 @@ def main(_):
     #torch.cuda.set_device(-1)  # Set an invalid device number
     torch.autograd.set_detect_anomaly(True)
     # Set the logging level
-    torch.backends.cudnn.benchmark = True # False  # Disable CUDA optimizations for deterministic behavior
+    #torch.backends.cudnn.benchmark = True # False  # Disable CUDA optimizations for deterministic behavior
     # torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
     #torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
+
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = False
 
     config = get_config(FLAGS) or FLAGS
 

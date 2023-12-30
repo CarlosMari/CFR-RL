@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import os
 from torch.optim.lr_scheduler import ExponentialLR
 from utils import weight_init
+import json
+
 
 class PolicyModel(Model):
 
@@ -14,32 +16,38 @@ class PolicyModel(Model):
 
         self.input_dim = input_dim
         self.action_dim = action_dim
-        self.config = self.config
+        self.config = config
 
 
         self.conv_block = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=3, padding=1),
+            nn.Conv2d(1, self.Conv2D_out, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(128 * 12 * 12, 512),
+            nn.Linear(self.Conv2D_out * 12 * 12, 500),
             nn.LeakyReLU(),
-            nn.Linear(512, 144),
+            nn.Linear(500, 288),
             nn.LeakyReLU()
         )
 
         self.conv_block2 = nn.Sequential(
-            nn.Conv2d(1, 200, kernel_size=3, padding=1),
+            nn.Conv2d(1, 128, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.Flatten(),
-            nn.Linear(200 * 12 * 12, 144),
+            nn.Linear(128 * 12 * 12, 288),
             nn.LeakyReLU(),
         )
+
+        self.mlp = nn.Sequential(
+            nn.Linear(288*2,288, dtype=torch.float64),
+            nn.LeakyReLU(),
+            nn.Linear(288, action_dim, dtype=torch.float64)
+        )
         # 288
-        self.action_layer = nn.Linear(288, action_dim, dtype=torch.float64)
+        #self.action_layer = nn.Linear(288, action_dim, dtype=torch.float64)
 
         self.initialize_optimizers()
 
-        self.to('cuda')
+        self.to('cpu')
         if master:
             self.apply(weight_init)
             ckpt_path = f'./torch_ckpts/{self.model_name}/checkpoint_policy.pth'
@@ -59,12 +67,14 @@ class PolicyModel(Model):
                     print("There is no previous checkpoint, initializing...")
             print(f"Parameters: {sum(p.numel() for p in self.parameters() if p.requires_grad)}")
 
+            torch.save(self.state_dict(),f'./model/{self.config.version}.pt')
+
 
     def to(self, device):
         self.device = device
         self.conv_block = self.conv_block.to(self.device)
         self.conv_block2 = self.conv_block2.to(self.device)
-        self.action_layer = self.action_layer.to(self.device)
+        self.mlp = self.mlp.to(self.device)
 
     def forward(self, inputs, mat):
         inputs = inputs.to(torch.float32).to(self.device)
@@ -84,7 +94,7 @@ class PolicyModel(Model):
         x_2 = self.conv_block2(mat)
         final_x = torch.cat((x, x_2), dim=1).to(torch.double)  # [B,288]
 
-        logits = self.action_layer(final_x)
+        logits = self.mlp(final_x)
 
         if self.config.logit_clipping > 0:
             logits = self.config.logit_clipping * torch.tanh(logits)
@@ -120,14 +130,23 @@ class PolicyModel(Model):
         logits, policy = self(inputs.permute(0, 3, 1, 2), mats)
 
         policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
+
+
         policy_loss.backward()
+
+        """gradients = []
+        for name, param in self.named_parameters():
+            gradients.append(f'{name},\n{param}')
+
+        print(gradients)
+
+        with open('gradients_gpu','a') as file:
+            file.writelines(gradients)"""
 
         """if not self.check_gradients():
             print("NaNs Detected")
             print(f"input {inputs} \n mat{mats}")"""
         self.optimizer.step()
-
-
 
         return entropy
 

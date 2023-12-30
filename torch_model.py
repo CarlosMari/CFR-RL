@@ -6,6 +6,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 import os
 import inspect
+
+from game import Game
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import ExponentialLR
 # import torch.utils.tensorboard as tensorboard
@@ -23,8 +25,8 @@ class Model(nn.Module, ABC):
         self.action_dim = action_dim
         self.max_moves = max_moves
         self.master = master
-        self.model_name = f"{config.version}-{config.project_name}_{config.method}_{config.model_type}_{config.topology_file}_{config.traffic_file}"
-        self.device = 'cuda'
+        self.model_name = f"{config.version}"
+        self.device = 'cpu'
 
 
     @abstractmethod
@@ -97,13 +99,10 @@ class Model(nn.Module, ABC):
 
         policy_loss = (torch.multiply(policy_loss, (-advantages).detach())).cpu()
 
-        #print(f'Devices: {policy_loss.device}, {advantages.device}')
-        policy_loss -= entropy_weight * entropy
-        #print(f'Policy loss shape {policy_loss.shape}')
-        policy_loss = torch.sum(policy_loss)
-        # print(f'Policy loss: {policy_loss}')
-        #wandb.log({'policy_loss':policy_loss})
-        return policy_loss, entropy
+        policy_loss = policy_loss - entropy_weight * entropy
+        loss = torch.sum(policy_loss)
+
+        return loss, entropy
 
     def get_weights(self):
         return self.state_dict()
