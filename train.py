@@ -224,9 +224,6 @@ def main(_):
     coordinator = mp.Process(target=central_agent, args=(config, game, model_weights_queues, experience_queues))
 
     coordinator.start()
-    print("============================================================")
-    print("Started coordinator")
-    print("============================================================")
     agents = []
     for i in range(FLAGS.num_agents):
         agents.append(mp.Process(target=agent, args=(i, config, game, tm_subsets[i], model_weights_queues[i], experience_queues[i])))

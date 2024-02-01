@@ -85,7 +85,7 @@ class ActorCriticModel(Model):
         values = self.critic(inputs)
         return logits, values, policy
 
-    def _train(self, inputs, actions, rewards, entropy_weight=0.01):
+    def backward(self, inputs, actions, rewards, entropy_weight=0.01):
         # We make sure the vectors are pytorch vectors
         inputs = torch.stack(inputs, dim=0)
         # print(inputs.shape)

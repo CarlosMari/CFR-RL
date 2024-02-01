@@ -64,8 +64,8 @@ class PolicyModel(Model):
                 if not os.path.exists(ckpt_path):
                     self.step = 0
                     print(f'Path: {ckpt_path}')
-                    print("There is no previous checkpoint, initializing...")
-            print(f"Parameters: {sum(p.numel() for p in self.parameters() if p.requires_grad)}")
+                    #print("There is no previous checkpoint, initializing...")
+            #print(f"Parameters: {sum(p.numel() for p in self.parameters() if p.requires_grad)}")
 
             torch.save(self.state_dict(),f'./model/{self.config.version}.pt')
 
@@ -79,15 +79,12 @@ class PolicyModel(Model):
     def forward(self, inputs, mat):
         inputs = inputs.to(torch.float32).to(self.device)
         mat = mat.to(torch.float32).to(self.device)
+        """print(f'Mat Shape: {mat.shape}')
+        print(f'Inputs Shape: {inputs.shape}')"""
 
-        if len(mat.shape) == 1:
-            mat = F.normalize(mat, dim=0)
-            mat = mat.reshape(12, 12).unsqueeze(0).unsqueeze(0)
-        else:
-            mat = mat.reshape(mat.shape[0], mat.shape[1] * mat.shape[2])  # (B, 12^2)
-            mat = F.normalize(mat, dim=1)
-            mat = mat.reshape(mat.shape[0], 12, 12)  # (B,12,12)
-            mat = mat.unsqueeze(0).permute(1, 0, 2, 3)  # (B,C,12,12)
+
+        # inputs (1,12,12) / (22,12,12) / 22 = 11*2 (num_agents)
+        # mat (1,12,12) / (22,12,12)
 
         assert mat.shape == inputs.shape, f'{mat.shape},{inputs.shape}'
         x = self.conv_block(inputs)
@@ -116,36 +113,23 @@ class PolicyModel(Model):
     def step_scheduler(self):
         self.lr_scheduler.step()
 
-    def _train(self, inputs, actions, advantages, entropy_weight, mats):
+    def backward(self, inputs, actions, advantages, entropy_weight, mats):
 
-        mats = torch.stack(mats, dim=0).to(self.device)
+        """mats = torch.stack(mats, dim=0).to(self.device)
         inputs = torch.stack(inputs, dim=0).to(self.device)
-        advantages = torch.from_numpy(advantages).to(self.device)
+        advantages = torch.from_numpy(advantages).to(self.device)"""
 
         # We tell the model that it is training
         self.train()
 
         self.optimizer.zero_grad()
 
-        logits, policy = self(inputs.permute(0, 3, 1, 2), mats)
+        logits, policy = self(inputs.unsqueeze(0).permute(1,0,2,3), mats.unsqueeze(0).permute(1,0,2,3))
 
         policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
 
-
         policy_loss.backward()
 
-        """gradients = []
-        for name, param in self.named_parameters():
-            gradients.append(f'{name},\n{param}')
-
-        print(gradients)
-
-        with open('gradients_gpu','a') as file:
-            file.writelines(gradients)"""
-
-        """if not self.check_gradients():
-            print("NaNs Detected")
-            print(f"input {inputs} \n mat{mats}")"""
         self.optimizer.step()
 
         return entropy

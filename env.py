@@ -20,7 +20,7 @@ class Topology():
         self.calculate_paths()
 
     def load_topology(self):
-        print('[*] Loading topology...', self.topology_file)
+        #print('[*] Loading topology...', self.topology_file)
 
         f = open(self.topology_file, 'r')
         header = f.readline()
@@ -44,7 +44,7 @@ class Topology():
 
         assert len(self.DG.nodes()) == self.num_nodes and len(self.DG.edges()) == self.num_links, f'DG.nodes: {len(self.DG.nodes())}, num_nodes : {self.num_nodes}, \n edges: {len(self.DG.edges())} == {self.num_links}'
         f.close()
-        print('nodes: %d, links: %d\n'%(self.num_nodes, self.num_links))
+        #print('nodes: %d, links: %d\n'%(self.num_nodes, self.num_links))
 
         """plt.figure()
         print(self.DG)
@@ -62,7 +62,7 @@ class Topology():
         self.shortest_paths = []
         #self.shortest_paths_file = f'./resources/shortest_path/topology_0'
         if os.path.exists(self.shortest_paths_file):
-            print('[*] Loading shortest paths...', self.shortest_paths_file)
+            #print('[*] Loading shortest paths...', self.shortest_paths_file)
             f = open(self.shortest_paths_file, 'r')
             self.num_pairs = 0
             for line in f:
@@ -82,7 +82,7 @@ class Topology():
                     self.shortest_paths[-1].append(node_path)
                     paths = paths[idx+3:]
         else:
-            print('[!] Calculating shortest paths...')
+            #print('[!] Calculating shortest paths...')
             f = open(self.shortest_paths_file, 'w+')
             self.num_pairs = 0
             for s in range(self.num_nodes):
@@ -99,8 +99,8 @@ class Topology():
         assert self.num_pairs == self.num_nodes*(self.num_nodes-1), f'{self.num_pairs} {self.num_nodes}'
         f.close()
         
-        print('pairs: %d, nodes: %d, links: %d\n'\
-                %(self.num_pairs, self.num_nodes, self.num_links))
+        #print('pairs: %d, nodes: %d, links: %d\n'\
+         #       %(self.num_pairs, self.num_nodes, self.num_links))
 
   
 
@@ -122,7 +122,7 @@ class Traffic(object):
 
     def load_traffic(self, config):
         assert os.path.exists(self.traffic_file)
-        print('[*] Loading traffic matrices...', self.traffic_file)
+        #print('[*] Loading traffic matrices...', self.traffic_file)
 
         f = open(self.traffic_file, 'r')
         traffic_matrices = []
@@ -144,7 +144,7 @@ class Traffic(object):
 
         tms_shape = self.traffic_matrices.shape
         self.tm_cnt = tms_shape[0]
-        print('Traffic matrices dims: [%d, %d, %d]\n'%(tms_shape[0], tms_shape[1], tms_shape[2]))
+        #print('Traffic matrices dims: [%d, %d, %d]\n'%(tms_shape[0], tms_shape[1], tms_shape[2]))
 
 
     

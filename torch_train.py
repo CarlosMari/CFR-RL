@@ -5,6 +5,7 @@ from tqdm import tqdm
 import torch.multiprocessing as mp
 import sys
 from game import CFRRL_Game
+from gym_env import GameEnv
 
 from actor_critic import ActorCriticModel
 from policy import PolicyModel
@@ -15,13 +16,11 @@ import numpy as np
 from absl import app
 from absl import flags
 
-
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 12, 'number of agents')
+flags.DEFINE_integer('num_agents',11, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
-
 
 CHECK_GRADIENTS = True
 WANDB_LOG = True
@@ -32,6 +31,7 @@ if WANDB_LOG:
 
 
 def central_agent(config, games, model_weight_queues, experience_queues):
+
     game = games[0]
     if config.method == 'actor_critic':
         print("Actor Critic Model")
@@ -42,6 +42,8 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
     # We initialize wandb
     if WANDB_LOG:
+        print("Initializing WANDB")
+        print("=========================")
         wandb.init(
             # set the wandb project where this run will be logged
             project='CFR-RL',
@@ -94,10 +96,8 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float32)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
-                                                                                   r_batch, config.entropy_weight)
-
-
+            value_loss, entropy, actor_gradients, critic_gradients = network.backward(s_batch, actions,
+                                                                                      r_batch, config.entropy_weight)
 
             if CHECK_GRADIENTS:  # Checks if gradients are NaN
                 for g in actor_gradients:
@@ -111,11 +111,14 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             a_batch = []
             r_batch = []
             ad_batch = []
-            #mat = game.get_topology()
+            # mat = game.get_topology()
             mats = []
-            #print(mat)
+            # print(mat)
             for i in range(FLAGS.num_agents):
-                s_batch_agent, a_batch_agent, r_batch_agent, ad_batch_agent, mat_batch_agent = experience_queues[i].get()
+                print("Central waiting for queues")
+                s_batch_agent, a_batch_agent, r_batch_agent, ad_batch_agent, mat_batch_agent = experience_queues[
+                    i].get()
+                print("Central got experience queues")
                 s_batch += [s.clone().detach() for s in s_batch_agent]
                 a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
                 r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
@@ -124,13 +127,11 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
             assert len(s_batch) * game.max_moves == len(a_batch)
 
-
-
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            entropy = network._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight, mats)
-
+            entropy = network.backward(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight,
+                                       mats)
 
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
@@ -145,7 +146,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                     'loss': avg_value_loss,
                     'reward': avg_reward,
                     'entropy': avg_entropy
-                }, step=step+1)
+                }, step=step + 1)
             else:
                 avg_reward = np.mean(r_batch)
                 avg_entropy = torch.mean(entropy)
@@ -156,18 +157,20 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                     'advantage': avg_advantage,
                     'reward': avg_reward,
                     'entropy': avg_entropy
-                }, step=step+1)
+                }, step=step + 1)
 
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
             network.save_ckpt(_print=True)
-            #print(np.mean(value_loss))
+            # print(np.mean(value_loss))
         """if step % config.learning_rate_decay_step == 0:
             network.step_scheduler()"""
 
-def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
+
+def agent(agent_id, config, game: GameEnv, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
 
+    # Create the network
     if config.method == 'actor_critic':
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
@@ -192,7 +195,8 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
     run_iterations = FLAGS.num_iter
 
     while True:
-        tm_idx = tm_subset[idx]
+        tm_idx = game.tm_idx
+        # tm_idx = tm_subset[idx]
         state = torch.from_numpy(game.get_state(tm_idx))
         s_batch.append(state)
 
@@ -206,10 +210,10 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
                 logits, policy = network(extended_state, mat)
 
         assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
-        #print(game.env.topology_name)
-        #print(extended_state)
-        #print(logits)
-        #print(policy.view(-1))
+        # print(game.env.topology_name)
+        # print(extended_state)
+        # print(logits)
+        # print(policy.view(-1))
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
         for a in actions:
             a_batch.append(a)
@@ -253,21 +257,23 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             idx = 0
 
 
+from agent import CentralAgent, Agent
+
 def main(_):
-    #torch.cuda.set_device(-1)  # Set an invalid device number
+    # torch.cuda.set_device(-1)  # Set an invalid device number
     torch.autograd.set_detect_anomaly(True)
     # Set the logging level
-    #torch.backends.cudnn.benchmark = True # False  # Disable CUDA optimizations for deterministic behavior
+    # torch.backends.cudnn.benchmark = True # False  # Disable CUDA optimizations for deterministic behavior
     # torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
-    #torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
+    # torch.set_default_tensor_type(torch.FloatTensor)  # Set the default tensor type to CPU
 
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = False
 
     config = get_config(FLAGS) or FLAGS
 
-    #env = Environment(config,topology='topology_0', is_training=True)
-    #game = CFRRL_Game(config, env)
+    # env = Environment(config,topology='topology_0', is_training=True)
+    # game = CFRRL_Game(config, env)
     model_weights_queues = []
     experience_queues = []
     games = []
@@ -279,27 +285,33 @@ def main(_):
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
     for i in range(FLAGS.num_agents):
-        #env = Environment(config, topology='topology_6', is_training=True)
-        env = Environment(config, topology=f'topology_{i+1}', is_training=True)
-        game = CFRRL_Game(config, env)
+        # env = Environment(config, topology='topology_6', is_training=True)
+        env = Environment(config, topology=f'topology_{i + 1}', is_training=True)
+        # game = #CFRRL_Game(config, env)
+        game = GameEnv(config, env, i)
         games.append(game)
         model_weights_queues.append(mp.JoinableQueue(1))
         experience_queues.append(mp.Queue(1))
 
     # Why not just create a bigger batch_size and use GPU
-    tm_subsets = np.array_split(game.tm_indexes, FLAGS.num_agents)
-    coordinator = mp.Process(target=central_agent, args=(config, games, model_weights_queues, experience_queues))
+    #tm_subsets = np.array_split(game.tm_indexes, FLAGS.num_agents)
+    central = CentralAgent(0,config, game, model_weights_queues, experience_queues,device='cpu',log=WANDB_LOG, num_agents=FLAGS.num_agents)
+    #coordinator = mp.Process(target=central_agent, args=(config, games, model_weights_queues, experience_queues))
+    coordinator = mp.Process(target=central.run)
 
     coordinator.start()
 
     agents = []
     for i in range(FLAGS.num_agents):
-        agents.append(mp.Process(target=agent,
-                                 args=(i, config, games[i], tm_subsets[i], model_weights_queues[i], experience_queues[i])))
+        _agent = Agent(i, config, games[i], model_weights_queues[i], experience_queues[i])
+        #print("Creating agent {i}")
+        agents.append(mp.Process(target=_agent.run))
 
     for i in range(FLAGS.num_agents):
+        #print("Starting agent {i}")
         agents[i].start()
 
+    print("Coordinator joining")
     coordinator.join()
 
 

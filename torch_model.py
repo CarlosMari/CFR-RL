@@ -87,7 +87,8 @@ class Model(nn.Module, ABC):
         entropy = entropy.unsqueeze(-1)
         policy = policy.unsqueeze(-1)
 
-        product = torch.matmul(actions, policy).squeeze()
+
+        product = torch.matmul(actions.float(), policy.float()).squeeze()
         # Ensures the minimum is log_epilon
         policy_loss = torch.log(
             torch.clamp(product, min=log_epsilon)
@@ -107,7 +108,7 @@ class Model(nn.Module, ABC):
     def get_weights(self):
         return self.state_dict()
 
-    def _train(self, inputs, actions, rewards, entropy_weight=0.01):
+    def backward(self, inputs, actions, rewards, entropy_weight=0.01):
         raise NotImplementedError
 
     def predict(self, input):

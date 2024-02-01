@@ -426,7 +426,7 @@ class CFRRL_Game(Game):
         assert self.max_moves <= self.action_dim, (self.max_moves, self.action_dim)
         
         self.tm_history = 1
-        self.tm_indexes = np.arange(self.tm_history-1, self.tm_cnt)
+        self.tm_indexes = np.arange(self.tm_history-1, self.tm_cnt) # How many TMs I have array [0-N]
         self.valid_tm_cnt = len(self.tm_indexes)
         
         if config.method == 'pure_policy':
@@ -434,8 +434,8 @@ class CFRRL_Game(Game):
 
         self.generate_inputs(normalization=True)
         self.state_dims = self.normalized_traffic_matrices.shape[1:]
-        print('Input dims :', self.state_dims)
-        print('Max moves :', self.max_moves)
+        #print('Input dims :', self.state_dims)
+        #print('Max moves :', self.max_moves)
 
     def get_state(self, tm_idx):
         idx_offset = self.tm_history - 1
@@ -451,10 +451,13 @@ class CFRRL_Game(Game):
 
         # Critical MLU
         crit_topk = self.get_critical_topK_flows(tm_idx)
-        _, solution = self.optimal_routing_mlu_critical_pairs(tm_idx, crit_topk)
-        crit_mlu, _ = self.eval_critical_flow_and_ecmp(tm_idx, crit_topk, solution, eval_delay=False)
+        crit_mlu , solution = self.optimal_routing_mlu_critical_pairs(tm_idx, crit_topk)
+        crit_mlu_2, _ = self.eval_critical_flow_and_ecmp(tm_idx, crit_topk, solution, eval_delay=False)
 
 
+
+        # Values are not the exact same, after the 5th decimal place, but compute wise it is better to use the less accurate one
+        # assert np.float32(crit_mlu) == np.float32(crit_mlu_2), f'Values {crit_mlu} | {crit_mlu_2}'
         """ print(f"Execution time: {execution_time} seconds")
         print(f"Quasi Optimal {quasi_optimal}, Optimal {optimal_mlu}, ECMP: {ecmp_mlu}")"""
         #_, solution = self.optimal_routing_mlu_critical_pairs(tm_idx, actions)
@@ -462,10 +465,11 @@ class CFRRL_Game(Game):
         if mlu < crit_mlu:
             reward = 1 + (crit_mlu - mlu) / crit_mlu
         elif (abs(crit_mlu - ecmp_mlu) < 0.005 ):
-            reward = 0.5
+            reward = 0
         else:
             reward = (1 - 2 * abs(mlu - crit_mlu) / abs(crit_mlu - ecmp_mlu))
 
+        #print(f'ECMP MLU : {ecmp_mlu} | MLU {mlu} | crit_mlu {crit_mlu} |  reward {reward}')
         #reward = 1/mlu
 
 
