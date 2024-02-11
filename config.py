@@ -25,7 +25,7 @@ class NetworkConfig(object):
 
 
 class Config(NetworkConfig):
-    version = '4.2.4'
+    version = '5.0.1_pre'
 
     project_name = 'CFR-RL'
 

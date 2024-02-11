@@ -27,7 +27,6 @@ class Agent():
         self.create_network()
         self.device = device
 
-        self.init_weights()
         print(f"Creating agent {self.id} using {self.device}")
 
     def set_seed(self):
@@ -38,6 +37,7 @@ class Agent():
 
     def run(self):
         # print(f"Running agent {self.id}")
+        self.init_weights()
         run_iterations = 10
         mat, tm = self.game.reset()
         state_batch = []
@@ -82,6 +82,7 @@ class Agent():
             mat = new_mat
 
     def init_weights(self):
+        #print(f'Agent {self.id} waiting for weights')
         model_weights = self.model_weight_queue.get()
         self.model_weight_queue.task_done()
         self.model.load_state_dict(model_weights)
@@ -97,23 +98,22 @@ class CentralAgent(Agent):
 
     def run(self):
         self.init_wandb()
+        self.model.to('cpu')
+
         for step in tqdm(range(self.model.step, self.config.max_step), ncols=70, initial=self.model.step):
             self.model.step += 1
             model_weights = self.model.get_weights()
 
             # We distribute the weights
+            """print("===============================================================================")
+            print("Distributing Weights")
+            print("===============================================================================")"""
             for i in range(self.num_agents):
                 self.model_weight_queue[i].put(model_weights)
                 self.model_weight_queue[i].join()
 
             #print("Finished distributing weights")
 
-            # We prepare lists with the data
-            """s_batch = torch.empy(0)  # states
-            a_batch = torch.empty(0)  # actions
-            r_batch = torch.empty(0)  # rewards
-            ad_batch = torch.empty(0)  # Advantages
-            mat_batch = torch.empty(0)  # Topologies (part of state)"""
 
             # We get the data
             for i in range(self.num_agents):
@@ -132,11 +132,7 @@ class CentralAgent(Agent):
                     ad_batch = torch.cat((ad_batch, ad_agent))
                     mat_batch = torch.cat((mat_batch, mat_agent))
 
-                # s_batch += [s.clone().detach() for s in s_agent]
-                # a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_agent]
-                # r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_agent]
-                # ad_batch += [torch.tensor(ad, dtype=torch.float32) for ad in ad_agent]
-                # mat_batch += [torch.tensor(mat) for mat in mat_agent]
+
 
             assert len(s_batch) * self.game.max_moves == a_batch.shape[0] * a_batch.shape[
                 1], f'{s_batch.shape}; {a_batch.shape}'
@@ -147,8 +143,8 @@ class CentralAgent(Agent):
             one_hot_actions = torch.nn.functional.one_hot(a_batch.to(torch.int64), 132)
 
             log_dict = {}
-            log_dict['entropy'] = self.model.backward(s_batch, one_hot_actions, ad_batch,
-                                                      self.config.entropy_weight, mat_batch)
+            log_dict['entropy'] = torch.mean(self.model.backward(s_batch, one_hot_actions, ad_batch,
+                                                      self.config.entropy_weight, mat_batch))
 
             log_dict['reward'] = torch.mean(r_batch)
             log_dict['advantage'] = torch.mean(ad_batch)

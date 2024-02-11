@@ -6,6 +6,7 @@ import os
 import networkx as nx
 from env import Environment
 from pulp import LpProblem, LpVariable, lpSum, LpStatus, GLPK
+import random
 
 DATA_DIR = './resources'
 OBJ_EPSILON = 1e-12
@@ -13,7 +14,7 @@ OBJ_EPSILON = 1e-12
 
 class Topology():
     def __init__(self, data_dir='./resources/', topology='Abilene'):
-        # topology = 'topology_0'
+        #topology = 'topology_0'
         self.topology_file = data_dir + 'topologies/' + topology
         self.shortest_paths_file = f'./resources/shortest_path/{topology}'
 
@@ -153,10 +154,10 @@ class Traffic(object):
 class GameEnv(gym.Env):
     seed = None
     random_state: np.random.RandomState = None
-    tms: np.array = None
+    tms: np.array
 
     def __init__(self, config, env: Environment, seed=None):
-        self.set_seed(seed)
+        self.set_seed(random.randint(0,9999))
         self.env = env
         self.data_dir = env.data_dir
         self.num_links = env.num_links
@@ -179,12 +180,14 @@ class GameEnv(gym.Env):
         self.lp_links = [e for e in self.env.link_sd_to_idx]
         self.pair_links = [(pr, e[0], e[1]) for pr in self.lp_pairs for e in self.lp_links]
 
+        self.mat = nx.adjacency_matrix(self.DG).toarray()
+
     def get_state(self):
-        mat = nx.adjacency_matrix(self.DG).toarray()
         tm = self.traffic_matrices[self.indexes[self.tm_idx]]
-        return mat, tm
+        return self.mat, tm
 
     def update_baseline(self, reward):
+        # self.indexes[self.tm_idx] is the key of the matrix
         if self.indexes[self.tm_idx] in self.baseline:
             total_v, cnt = self.baseline[self.indexes[self.tm_idx]]
 
@@ -400,7 +403,7 @@ class GameEnv(gym.Env):
         return reward - (total_v / cnt)
 
     def get_topK_flows(self, pairs):
-        tm = self.traffic_matrices[self.tm_idx]
+        tm = self.traffic_matrices[self.indexes[self.tm_idx]]
         f = {}
         for p in pairs:
             s, d = self.pair_idx_to_sd[p]

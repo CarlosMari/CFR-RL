@@ -78,13 +78,17 @@ class PolicyModel(Model):
 
     def forward(self, inputs, mat):
         inputs = inputs.to(torch.float32).to(self.device)
-        mat = mat.to(torch.float32).to(self.device)
-        """print(f'Mat Shape: {mat.shape}')
-        print(f'Inputs Shape: {inputs.shape}')"""
+        mat = torch.nn.functional.normalize(mat.to(torch.float32).to(self.device))
 
+        reshaped_inputs = inputs.view(inputs.shape[0],inputs.shape[1],-1)
 
-        # inputs (1,12,12) / (22,12,12) / 22 = 11*2 (num_agents)
-        # mat (1,12,12) / (22,12,12)
+        reshaped_normalized_inputs = torch.nn.functional.normalize(reshaped_inputs, dim=2)
+
+        inputs = reshaped_normalized_inputs.view(inputs.shape)
+
+        #assert False, f'INPUTS: {inputs.shape} \n ============================================= \n {inputs} \n ====================================================== \n {normalized_inputs}'
+        # inputs (1,12,12) / (num_agents * 11 ,12,12) / 22 = 11*2 (num_agents)
+        # mat (1,12,12) / (num_agents * 11 ,12,12)
 
         assert mat.shape == inputs.shape, f'{mat.shape},{inputs.shape}'
         x = self.conv_block(inputs)
@@ -115,20 +119,21 @@ class PolicyModel(Model):
 
     def backward(self, inputs, actions, advantages, entropy_weight, mats):
 
-        """mats = torch.stack(mats, dim=0).to(self.device)
-        inputs = torch.stack(inputs, dim=0).to(self.device)
-        advantages = torch.from_numpy(advantages).to(self.device)"""
-
         # We tell the model that it is training
         self.train()
 
         self.optimizer.zero_grad()
 
+        # Creating channel dimension and permuting
         logits, policy = self(inputs.unsqueeze(0).permute(1,0,2,3), mats.unsqueeze(0).permute(1,0,2,3))
 
         policy_loss, entropy = self.policy_loss_fn(logits, actions, advantages, entropy_weight)
 
         policy_loss.backward()
+
+        """for p in self.parameters():
+            print(p.grad)"""
+
 
         self.optimizer.step()
 
