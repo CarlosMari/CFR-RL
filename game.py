@@ -434,8 +434,8 @@ class CFRRL_Game(Game):
 
         self.generate_inputs(normalization=True)
         self.state_dims = self.normalized_traffic_matrices.shape[1:]
-        print('Input dims :', self.state_dims)
-        print('Max moves :', self.max_moves)
+        #print('Input dims :', self.state_dims)
+        #print('Max moves :', self.max_moves)
 
     def get_state(self, tm_idx):
         idx_offset = self.tm_history - 1
@@ -443,6 +443,7 @@ class CFRRL_Game(Game):
 
     def reward(self, tm_idx, actions):
         mlu, _ = self.optimal_routing_mlu_critical_pairs(tm_idx, actions)
+
         ecmp_mlu, _ = self.eval_ecmp_traffic_distribution(tm_idx, eval_delay=False)
 
         #quasi_optimal, _ = self.optimal_routing_mlu(tm_idx, True)
@@ -465,10 +466,6 @@ class CFRRL_Game(Game):
             reward = 0.5
         else:
             reward = (1 - 2 * abs(mlu - crit_mlu) / abs(crit_mlu - ecmp_mlu))
-
-        #reward = 1/mlu
-
-
 
         #reward = (ecmp_mlu / mlu) - 1
         #print(f'mlu: {mlu}, optimal: {optimal_mlu}, ecmp: {ecmp_mlu}, reward: {reward}')

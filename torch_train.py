@@ -17,7 +17,7 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 12, 'number of agents')
+flags.DEFINE_integer('num_agents', 15, 'number of agents')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -211,6 +211,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         #print(logits)
         #print(policy.view(-1))
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
+
         for a in actions:
             a_batch.append(a)
 
@@ -279,7 +280,6 @@ def main(_):
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
     for i in range(FLAGS.num_agents):
-        #env = Environment(config, topology='topology_6', is_training=True)
         env = Environment(config, topology=f'topology_{i+1}', is_training=True)
         game = CFRRL_Game(config, env)
         games.append(game)

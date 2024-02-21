@@ -62,7 +62,7 @@ class Topology():
         self.shortest_paths = []
         # self.shortest_paths_file = f'./resources/shortest_path/topology_0'
         if os.path.exists(self.shortest_paths_file):
-            print('[*] Loading shortest paths...', self.shortest_paths_file)
+            #print('[*] Loading shortest paths...', self.shortest_paths_file)
             f = open(self.shortest_paths_file, 'r')
             self.num_pairs = 0
             for line in f:
@@ -82,7 +82,7 @@ class Topology():
                     self.shortest_paths[-1].append(node_path)
                     paths = paths[idx + 3:]
         else:
-            print('[!] Calculating shortest paths...')
+            #print('[!] Calculating shortest paths...')
             f = open(self.shortest_paths_file, 'w+')
             self.num_pairs = 0
             for s in range(self.num_nodes):
@@ -143,7 +143,7 @@ class Traffic(object):
 
         tms_shape = self.traffic_matrices.shape
         self.tm_cnt = tms_shape[0]
-        print('Traffic matrices dims: [%d, %d, %d]\n' % (tms_shape[0], tms_shape[1], tms_shape[2]))
+        #print('Traffic matrices dims: [%d, %d, %d]\n' % (tms_shape[0], tms_shape[1], tms_shape[2]))
 
 
 class GameEnv(gym.Env):

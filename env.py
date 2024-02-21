@@ -113,7 +113,7 @@ class Traffic(object):
             self.traffic_file = './resources/tms/AbileneTM2'
         #self.traffic_file = './resources/tms/AbileneTM'
 
-        print(self.traffic_file)
+        #print(self.traffic_file)
         #print("Is training")
         #print(is_training)
         #print(self.traffic_file)
@@ -122,7 +122,7 @@ class Traffic(object):
 
     def load_traffic(self, config):
         assert os.path.exists(self.traffic_file)
-        print('[*] Loading traffic matrices...', self.traffic_file)
+        #print('[*] Loading traffic matrices...', self.traffic_file)
 
         f = open(self.traffic_file, 'r')
         traffic_matrices = []
@@ -144,7 +144,7 @@ class Traffic(object):
 
         tms_shape = self.traffic_matrices.shape
         self.tm_cnt = tms_shape[0]
-        print('Traffic matrices dims: [%d, %d, %d]\n'%(tms_shape[0], tms_shape[1], tms_shape[2]))
+        #print('Traffic matrices dims: [%d, %d, %d]\n'%(tms_shape[0], tms_shape[1], tms_shape[2]))
 
 
     
