@@ -63,7 +63,8 @@ def central_agent(config, games, model_weight_queues, experience_queues):
     # network.restore_ckpt()
 
     # Initial step from checkpoint should be implemented
-    for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
+    #for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
+    for step in tqdm(range(network.step, config.max_step)):
         network.step += 1
         model_weights = network.get_weights()
         for i in range(FLAGS.num_agents):
