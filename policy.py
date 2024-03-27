@@ -11,13 +11,13 @@ import json
 
 class PolicyModel(Model):
 
-    def __init__(self, config, input_dim, action_dim, max_moves, master=True):
+    def __init__(self, config, input_dim, action_dim, max_moves, master=True, name='None'):
         super(PolicyModel, self).__init__(config, input_dim, action_dim, max_moves, master=master)
 
         self.input_dim = input_dim
         self.action_dim = action_dim
         self.config = config
-
+        self.name = name
 
         self.conv_block = nn.Sequential(
             nn.Conv2d(1, self.Conv2D_out, kernel_size=3, padding=1),
@@ -50,7 +50,7 @@ class PolicyModel(Model):
         self.to('cpu')
         if master:
             self.apply(weight_init)
-            ckpt_path = f'./torch_ckpts/{self.model_name}/checkpoint_policy.pth'
+            ckpt_path = f'./torch_ckpts/{self.name}/checkpoint_policy.pth'
 
             # Check if the directory exists, and create it if not
             self.ckpt_dir = os.path.dirname(ckpt_path)

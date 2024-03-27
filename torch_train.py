@@ -17,6 +17,7 @@ from absl import flags
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('num_agents', 15, 'number of agents')
+flags.DEFINE_string('name', 'BLANK', 'name of the run')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 FLAGS(sys.argv)
@@ -47,6 +48,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
             # track hyperparameters and run metadata
             config={
+                "name": FLAGS.name,
                 "learning_rate": network.config.initial_learning_rate,
                 "dataset": network.config.topology_file,
                 "TM": network.config.traffic_file,
