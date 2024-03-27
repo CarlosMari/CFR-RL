@@ -24,10 +24,10 @@
 #SBATCH -J CFR-RL           # Job name
 #SBATCH -o Output.o%j       # Name of stdout output file
 #SBATCH -e Error.e%j       # Name of stderr error file
-#SBATCH -p development           # Queue (partition) name
+#SBATCH -p small           # Queue (partition) name
 #SBATCH -N 1               # Total # of nodes (must be 1 for serial)
 #SBATCH -n 1               # Total # of mpi tasks (should be 1 for serial)
-#SBATCH -t 0:10:00        # Run time (hh:mm:ss)
+#SBATCH -t 48:00:00        # Run time (hh:mm:ss)
 #SBATCH --mail-type=all    # Send email at begin and end of job
 #SBATCH -A MLL       # Project/Allocation name (req'd if you have more than 1)
 #SBATCH --mail-user=carlosmari@utexas.edu
@@ -38,4 +38,7 @@ source ../python-envs/CFR-RL/bin/activate
 
 
 # Launch serial code...
-python torch_train.py 
+python torch_train.py --num_agents=12 --name=4.2.8 > out_5.2.5.txt & python torch_train.py --num_agents=12 --name=4.2.9 > out_4.2.9.txt & python torch_train.py --num_agents=12 --name=4.2.10 > out_4.2.10.txt & python torch_train.py --num_agents=12 --name=4.2.11 > out_4.2.11.txt 
+
+
+
