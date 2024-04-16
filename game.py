@@ -462,7 +462,7 @@ class CFRRL_Game(Game):
 
         if mlu < crit_mlu:
             reward = 1 + (crit_mlu - mlu) / crit_mlu
-        elif (abs(crit_mlu - ecmp_mlu) < 0.005 ):
+        elif (abs(crit_mlu - ecmp_mlu) < 0.000005 ):
             reward = 0.5
         else:
             reward = (1 - 2 * abs(mlu - crit_mlu) / abs(crit_mlu - ecmp_mlu))
@@ -470,7 +470,7 @@ class CFRRL_Game(Game):
         #reward = (ecmp_mlu / mlu) - 1
         #print(f'mlu: {mlu}, optimal: {optimal_mlu}, ecmp: {ecmp_mlu}, reward: {reward}')
 
-
+        #reward = optimal_mlu / mlu
         return reward
 
     def advantage(self, tm_idx, reward):
