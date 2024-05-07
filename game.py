@@ -189,7 +189,7 @@ class Game(object):
 
         return eval_max_utilization, delay
 
-    def optimal_routing_mlu(self, tm_idx, timeout=False):
+    def optimal_routing_mlu(self, tm_idx):
         tm = self.traffic_matrices[tm_idx]
         demands = {}
         for i in range(self.num_pairs):
@@ -198,35 +198,41 @@ class Game(object):
 
         model = LpProblem(name="routing")
 
+        # MLU? -> VARIABLE BETWEEN 0 AND 1
         ratio = LpVariable.dicts(name="ratio", indexs=self.pair_links, lowBound=0, upBound=1)
 
+        # link load
         link_load = LpVariable.dicts(name="link_load", indexs=self.links)
 
         r = LpVariable(name="congestion_ratio")
 
-        for pr in self.lp_pairs:
-            model += (lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[1] == self.pair_idx_to_sd[pr][0]]) - lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[0] == self.pair_idx_to_sd[pr][0]]) == -1, "flow_conservation_constr1_%d"%pr)
+        for pair in self.lp_pairs: 
+            # SUM OF EXIT FLOWS MUST EQUAL SUM OF ENTERING FLOWS
+            model += (lpSum([ratio[pair, e[0], e[1]] for e in self.lp_links if e[1] == self.pair_idx_to_sd[pair][0]]) - 
+                      lpSum([ratio[pair, e[0], e[1]] for e in self.lp_links if e[0] == self.pair_idx_to_sd[pair][0]]) == -1, 
+                      f"flow_conservation_constr1_{pair}")
 
-        for pr in self.lp_pairs:
-            model += (lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[1] == self.pair_idx_to_sd[pr][1]]) - lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[0] == self.pair_idx_to_sd[pr][1]]) == 1, "flow_conservation_constr2_%d"%pr)
+        for pair in self.lp_pairs:
+            model += (lpSum([ratio[pair, e[0], e[1]] for e in self.lp_links if e[1] == self.pair_idx_to_sd[pair][1]]) - 
+                      lpSum([ratio[pair, e[0], e[1]] for e in self.lp_links if e[0] == self.pair_idx_to_sd[pair][1]]) == 1,
+                      f"flow_conservation_constr2_{pair}")
 
-        for pr in self.lp_pairs:
-            for n in self.lp_nodes:
-                if n not in self.pair_idx_to_sd[pr]:
-                    model += (lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[1] == n]) - lpSum([ratio[pr, e[0], e[1]] for e in self.lp_links if e[0] == n]) == 0, "flow_conservation_constr3_%d_%d"%(pr,n))
+        for pair in self.lp_pairs:
+            for node in self.lp_nodes:
+                if node not in self.pair_idx_to_sd[pair]:
+                    model += (lpSum([ratio[pair, e[0], e[1]] for e in self.lp_links if e[1] == node]) - 
+                              lpSum([ratio[pair, e[0], e[1]] for e in self.lp_links if e[0] == node]) == 0, 
+                              f"flow_conservation_constr3_{pair}_{node}")
 
         for e in self.lp_links:
             ei = self.link_sd_to_idx[e]
-            model += (link_load[ei] == lpSum([demands[pr]*ratio[pr, e[0], e[1]] for pr in self.lp_pairs]), "link_load_constr%d"%ei)
-            model += (link_load[ei] <= self.link_capacities[ei]*r, "congestion_ratio_constr%d"%ei)
+            model += (link_load[ei] == lpSum([demands[pair]*ratio[pair, e[0], e[1]] for pair in self.lp_pairs]), f"link_load_constr{ei}")
+            model += (link_load[ei] <= self.link_capacities[ei]*r, f"congestion_ratio_constr{ei}")
 
         model += r + OBJ_EPSILON*lpSum([link_load[e] for e in self.links])
 
-        if not timeout:
+        model.solve(solver=GLPK(msg=False))
 
-            model.solve(solver=GLPK(msg=False, timeLimit=1))
-        else:
-            model.solve(solver=pulp.GUROBI_CMD(options=[("MIPgap", 0.9)]))
 
         assert LpStatus[model.status] == 'Optimal'
 
