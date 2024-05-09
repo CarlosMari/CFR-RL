@@ -5,8 +5,8 @@ import torch.multiprocessing as mp
 import sys
 from game import CFRRL_Game
 
-from actor_critic import ActorCriticModel
-from policy import PolicyModel
+from models.actor_critic import ActorCriticModel
+from models.policy import PolicyModel
 from game import CFRRL_Game
 from env import Environment
 from config import get_config
@@ -16,7 +16,7 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 15, 'number of agents')
+flags.DEFINE_integer('num_agents', 2, 'number of agents')
 flags.DEFINE_string('name', 'BLANK', 'name of the run')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
@@ -38,17 +38,17 @@ def central_agent(config, games, model_weight_queues, experience_queues):
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
     else:
         print("Policy Model")
-        network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
-
+        network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True, name=FLAGS.name)
+    
+    network.name = FLAGS.name
     # We initialize wandb
     if WANDB_LOG:
         wandb.init(
             # set the wandb project where this run will be logged
             project='CFR-RL',
-
+            name= FLAGS.name,
             # track hyperparameters and run metadata
             config={
-                "name": FLAGS.name,
                 "learning_rate": network.config.initial_learning_rate,
                 "dataset": network.config.topology_file,
                 "TM": network.config.traffic_file,
@@ -137,6 +137,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
+            num_tms = step * FLAGS.num_agents * FLAGS.num_iter
             if config.method == "actor_critic":
                 actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
                 avg_value_loss = np.mean(value_loss)
@@ -147,7 +148,8 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                     'learning_rate': actor_learning_rate,
                     'loss': avg_value_loss,
                     'reward': avg_reward,
-                    'entropy': avg_entropy
+                    'entropy': avg_entropy,
+                    'tm_count': num_tms,
                 }, step=step+1)
             else:
                 avg_reward = np.mean(r_batch)
@@ -158,13 +160,13 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                     'learning_rate': learning_rate,
                     'advantage': avg_advantage,
                     'reward': avg_reward,
-                    'entropy': avg_entropy
+                    'entropy': avg_entropy,
+                    'tm_count': num_tms
                 }, step=step+1)
 
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
             network.save_ckpt(_print=True)
-            #print(np.mean(value_loss))
         """if step % config.learning_rate_decay_step == 0:
             network.step_scheduler()"""
 

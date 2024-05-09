@@ -7,6 +7,7 @@ from tqdm import tqdm
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+from utils.traffic_generator import generate_tm
 
 class Topology():
     def __init__(self, data_dir='./resources/', topology='Abilene'):
@@ -121,7 +122,7 @@ class Traffic(object):
         self.load_traffic(config)
 
     def load_traffic(self, config):
-        assert os.path.exists(self.traffic_file)
+        '''assert os.path.exists(self.traffic_file)
         #print('[*] Loading traffic matrices...', self.traffic_file)
 
         f = open(self.traffic_file, 'r')
@@ -139,8 +140,9 @@ class Traffic(object):
             #print(matrix + '\n')
             traffic_matrices.append(matrix)
 
-        f.close()
-        self.traffic_matrices = np.array(traffic_matrices)
+        f.close()'''
+        #self.traffic_matrices = np.array(traffic_matrices)
+        self.traffic_matrices = generate_tm(num_nodes=12, total_traffic=1.5e9, N=2000)
 
         tms_shape = self.traffic_matrices.shape
         self.tm_cnt = tms_shape[0]
