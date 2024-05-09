@@ -20,20 +20,21 @@ flags.DEFINE_integer('num_agents', 2, 'number of agents')
 flags.DEFINE_string('name', 'BLANK', 'name of the run')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
+flags.DEFINE_integer('method',0,'0-> Policy, 1 -> Actor Critic')
 FLAGS(sys.argv)
 
 
 CHECK_GRADIENTS = True
 WANDB_LOG = True
 LOG_STEPS = 10
-
+METHOD = FLAGS.method
 if WANDB_LOG:
     import wandb
 
 
 def central_agent(config, games, model_weight_queues, experience_queues):
     game = games[0]
-    if config.method == 'actor_critic':
+    if METHOD == 1:
         print("Actor Critic Model")
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
     else:
@@ -74,7 +75,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             model_weight_queues[i].join()
 
         # ACTOR-CRITIC ALGORITHM
-        if config.method == "actor_critic":
+        if METHOD == 1:
             # Assemble experiences from the agents
             s_batch = []
             a_batch = []
@@ -109,7 +110,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                     assert not torch.isnan(g).any(), ('critic_gradients', s_batch, a_batch, r_batch, entropy)
 
         # REINFORCE
-        elif config.method == 'pure_policy':
+        elif METHOD == 0:
             s_batch = []
             a_batch = []
             r_batch = []
@@ -138,7 +139,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
             num_tms = step * FLAGS.num_agents * FLAGS.num_iter
-            if config.method == "actor_critic":
+            if METHOD == 1:
                 actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
                 avg_value_loss = np.mean(value_loss)
                 avg_reward = np.mean(r_batch)
@@ -173,7 +174,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
     random_state = np.random.RandomState(seed=agent_id)
 
-    if config.method == 'actor_critic':
+    if METHOD == 1:
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
         network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
@@ -190,7 +191,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
     a_batch = []
     r_batch = []
     mat_batch = []
-    if config.method == 'pure_policy':
+    if METHOD == 0:
         ad_batch = []
     run_iteration_idx = 0
     num_tms = len(tm_subset)
@@ -205,7 +206,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             # [B, C_in, H, W]
             extended_state = torch.unsqueeze(state, 0).permute(0, 3, 1, 2)
 
-            if config.method == 'actor_critic':
+            if METHOD== 1:
                 _, _, policy = network(extended_state)
             else:
                 logits, policy = network(extended_state, mat)
@@ -226,16 +227,18 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         r_batch.append(reward)
 
         # Advantages
-        if config.method == 'pure_policy':
+        if METHOD == 0:
             # advantages
             ad_batch.append(game.advantage(tm_idx, reward))
             game.update_baseline(tm_idx, reward)
 
         run_iteration_idx += 1
         if run_iteration_idx >= run_iterations:
-            if config.method == 'actor_critic':
+            if METHOD == 1:
+                #ac
                 experience_queue.put([s_batch, a_batch, r_batch, mat_batch])
-            elif config.method == 'pure_policy':
+            elif METHOD == 0:
+                #reinforce
                 experience_queue.put([s_batch, a_batch, r_batch, ad_batch, mat_batch])
 
             model_weights = model_weight_queues.get()
@@ -247,7 +250,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             del r_batch[:]
             del mat_batch[:]
 
-            if config.method == 'pure_policy':
+            if METHOD == 0:
                 del ad_batch[:]
 
             run_iteration_idx = 0
