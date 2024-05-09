@@ -445,7 +445,7 @@ class Game(object):
 
 
 class CFRRL_Game(Game):
-    def __init__(self, config, env, random_seed=1000):
+    def __init__(self, config, env, random_seed=1000, baseline=True):
         super(CFRRL_Game, self).__init__(config, env, random_seed)
         
         self.project_name = config.project_name
@@ -457,7 +457,7 @@ class CFRRL_Game(Game):
         self.tm_indexes = np.arange(self.tm_history-1, self.tm_cnt)
         self.valid_tm_cnt = len(self.tm_indexes)
         
-        if config.method == 'pure_policy':
+        if baseline:
             self.baseline = {}
 
         self.generate_inputs(normalization=True)

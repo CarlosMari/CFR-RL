@@ -135,18 +135,7 @@ class PolicyModel(Model):
 
         policy_loss.backward()
 
-        """gradients = []
-        for name, param in self.named_parameters():
-            gradients.append(f'{name},\n{param}')
 
-        print(gradients)
-
-        with open('gradients_gpu','a') as file:
-            file.writelines(gradients)"""
-
-        """if not self.check_gradients():
-            print("NaNs Detected")
-            print(f"input {inputs} \n mat{mats}")"""
         self.optimizer.step()
 
         return entropy

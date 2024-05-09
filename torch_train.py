@@ -80,34 +80,26 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             s_batch = []
             a_batch = []
             r_batch = []
-
+            mat_batch = []
             for i in range(FLAGS.num_agents):
-                s_batch_agent, a_batch_agent, r_batch_agent = experience_queues[i].get()
+                s_batch_agent, a_batch_agent, r_batch_agent, mat_batch_agent = experience_queues[i].get()
 
                 assert len(s_batch_agent) == FLAGS.num_iter, \
                     (len(s_batch_agent), len(a_batch_agent), len(r_batch_agent))
 
                 # Convert lists to PyTorch tensors and concatenate
                 s_batch += [s.clone().detach() for s in s_batch_agent]
-                a_batch += [torch.tensor(a, dtype=torch.int32) for a in a_batch_agent]
+                a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
                 r_batch += [torch.tensor(r, dtype=torch.float32) for r in r_batch_agent]
-
+                mat_batch += [torch.tensor(mat) for mat in mat_batch_agent]
             assert len(s_batch) * game.max_moves == len(a_batch)
 
             # Convert 'a_batch' to one-hot encoded tensors
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float32)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            value_loss, entropy, actor_gradients, critic_gradients = network._train(s_batch, actions,
-                                                                                   r_batch, config.entropy_weight)
+            value_loss, entropy = network._train(s_batch, actions, r_batch, config.entropy_weight, mat_batch)
 
-
-
-            if CHECK_GRADIENTS:  # Checks if gradients are NaN
-                for g in actor_gradients:
-                    assert not torch.isnan(g).any(), ('actor_gradients', s_batch, a_batch, r_batch, entropy)
-                for g in critic_gradients:
-                    assert not torch.isnan(g).any(), ('critic_gradients', s_batch, a_batch, r_batch, entropy)
 
         # REINFORCE
         elif METHOD == 0:
@@ -207,7 +199,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
             extended_state = torch.unsqueeze(state, 0).permute(0, 3, 1, 2)
 
             if METHOD== 1:
-                _, _, policy = network(extended_state)
+                _, _, policy = network(extended_state, mat)
             else:
                 logits, policy = network(extended_state, mat)
 
@@ -289,7 +281,7 @@ def main(_):
 
     for i in range(FLAGS.num_agents):
         env = Environment(config, topology=f'topology_{i+1}', is_training=True)
-        game = CFRRL_Game(config, env)
+        game = CFRRL_Game(config, env, baseline=METHOD==0)
         games.append(game)
         model_weights_queues.append(mp.JoinableQueue(1))
         experience_queues.append(mp.Queue(1))
