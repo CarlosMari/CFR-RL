@@ -21,6 +21,7 @@ flags.DEFINE_string('name', 'BLANK', 'name of the run')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 flags.DEFINE_integer('method',0,'0-> Policy, 1 -> Actor Critic')
+flags.DEFINE_integer('tms',2000,'Number of TMS per agent')
 FLAGS(sys.argv)
 
 
@@ -28,6 +29,7 @@ CHECK_GRADIENTS = True
 WANDB_LOG = True
 LOG_STEPS = 10
 METHOD = FLAGS.method
+TMS = FLAGS.tms
 if WANDB_LOG:
     import wandb
 
@@ -280,7 +282,7 @@ def main(_):
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
     for i in range(FLAGS.num_agents):
-        env = Environment(config, topology=f'topology_{i+1}', is_training=True)
+        env = Environment(config, topology=f'topology_{i+1}', is_training=True,N=TMS)
         game = CFRRL_Game(config, env, baseline=METHOD==0)
         games.append(game)
         model_weights_queues.append(mp.JoinableQueue(1))

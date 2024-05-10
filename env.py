@@ -106,7 +106,8 @@ class Topology():
   
 
 class Traffic(object):
-    def __init__(self, config, num_nodes, data_dir='./resources/',topology='Abilene', is_training=False):
+    def __init__(self, config, num_nodes, data_dir='./resources/',topology='Abilene', is_training=False, N=2000):
+        self.is_training = is_training
         if is_training:
             self.traffic_file = './resources/tms/' + topology + '_TM'
 
@@ -119,30 +120,33 @@ class Traffic(object):
         #print(is_training)
         #print(self.traffic_file)
         self.num_nodes = num_nodes
-        self.load_traffic(config)
+        self.load_traffic(config, N=N)
 
-    def load_traffic(self, config):
-        '''assert os.path.exists(self.traffic_file)
-        #print('[*] Loading traffic matrices...', self.traffic_file)
+    def load_traffic(self, config, N=2000):
+        if not self.is_training:
+            assert os.path.exists(self.traffic_file)
+            print('[*] Loading traffic matrices...', self.traffic_file)
 
-        f = open(self.traffic_file, 'r')
-        traffic_matrices = []
-        for line in f:
-            volumes = line.strip().split(' ')
-            total_volume_cnt = len(volumes)
-            assert total_volume_cnt == self.num_nodes*self.num_nodes
-            matrix = np.zeros((self.num_nodes, self.num_nodes))
-            for v in range(total_volume_cnt):
-                i = int(v/self.num_nodes)
-                j = v%self.num_nodes
-                if i != j:
-                    matrix[i][j] = float(volumes[v])
-            #print(matrix + '\n')
-            traffic_matrices.append(matrix)
+            f = open(self.traffic_file, 'r')
+            traffic_matrices = []
+            for line in f:
+                volumes = line.strip().split(' ')
+                total_volume_cnt = len(volumes)
+                assert total_volume_cnt == self.num_nodes*self.num_nodes
+                matrix = np.zeros((self.num_nodes, self.num_nodes))
+                for v in range(total_volume_cnt):
+                    i = int(v/self.num_nodes)
+                    j = v%self.num_nodes
+                    if i != j:
+                        matrix[i][j] = float(volumes[v])
+                #print(matrix + '\n')
+                traffic_matrices.append(matrix)
 
-        f.close()'''
-        #self.traffic_matrices = np.array(traffic_matrices)
-        self.traffic_matrices = generate_tm(num_nodes=12, total_traffic=1.5e9, N=2000)
+            f.close()
+            self.traffic_matrices = np.array(traffic_matrices)
+        else:
+        
+            self.traffic_matrices = generate_tm(num_nodes=12, total_traffic=1.5e9, N=N)
 
         tms_shape = self.traffic_matrices.shape
         self.tm_cnt = tms_shape[0]
@@ -151,11 +155,11 @@ class Traffic(object):
 
     
 class Environment(object):
-    def __init__(self, config, topology='topology_0', is_training=False):
+    def __init__(self, config, topology='topology_0', is_training=False,N=2000):
         self.data_dir = './resources/'
         self.topology_name = topology
         self.topology = Topology(self.data_dir, topology)
-        self.traffic = Traffic(config, self.topology.num_nodes, self.data_dir,topology, is_training=is_training)
+        self.traffic = Traffic(config, self.topology.num_nodes, self.data_dir,topology, is_training=is_training,N=N)
         self.traffic_matrices = self.traffic.traffic_matrices*100*8/300/1000    #kbps
         self.tm_cnt = self.traffic.tm_cnt
         self.traffic_file = self.traffic.traffic_file
