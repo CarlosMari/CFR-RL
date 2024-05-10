@@ -1,0 +1,4 @@
+python torch_train.py --name "REINFORCE_500" --num_agents 15 --method 0 --tms 500 > out_500.txt 
+python torch_train.py --name "REINFORCE_1000" --num_agents 15 --method 0 --tms 1000 > out_1000.txt 
+python torch_train.py --name "REINFORCE_3000" --num_agents 15 --method 0 --tms 3000 > out_3000.txt 
+
