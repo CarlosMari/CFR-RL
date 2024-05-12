@@ -10,17 +10,52 @@ import matplotlib.pyplot as plt
 from utils.traffic_generator import generate_tm
 
 class Topology():
-    def __init__(self, data_dir='./resources/', topology='Abilene'):
+    def __init__(self, data_dir='./resources/', topology='Abilene', seed=1):
         #topology = 'topology_0'
         self.topology_file = data_dir + 'topologies/' + topology
         self.shortest_paths_file = f'./resources/shortest_path/{topology}'
-
+        self.seed = seed
         self.DG = nx.DiGraph()
 
         self.load_topology()
         self.calculate_paths()
 
+    def generate_topology(self, num_nodes: int =12,w=10,seed=1):
+        """
+        Code to generate random topologies
+
+        num_nodes: int
+            Number of nodes of the topology
+        num_links: int
+            Number of links of the topology. Must be greater or equal to the number of nodes.
+        """
+
+        M = nx.random_internet_as_graph(num_nodes, seed=seed)
+        print(f'Generating topology {seed}')
+        self.num_links = M.number_of_edges() * 2
+        self.DG = nx.DiGraph()
+        self.link_idx_to_sd = {}
+        self.link_sd_to_idx = {}
+        self.link_capacities = np.empty((self.num_links))
+        self.link_weights = np.empty((self.num_links))
+        index = 0
+        for s,d,data in M.edges(data=True):
+            self.DG.add_edge(s, d, weight=w)
+            self.DG.add_edge(d, s, weight=w)
+            self.link_idx_to_sd[int(index)] = (int(s),int(d))
+            self.link_sd_to_idx[(int(s),int(d))] = int(index)
+            self.link_capacities[int(index)] = float(w)
+            self.link_weights[int(index)] = float(w)
+            index += 1
+            self.link_idx_to_sd[int(index)] = (int(d),int(s))
+            self.link_sd_to_idx[(int(d),int(s))] = int(index)
+            self.link_capacities[int(index)] = float(w)
+            self.link_weights[int(index)] = float(w)
+            index += 1
+
+        self.num_links = self.DG.number_of_edges()
     def load_topology(self):
+        '''
         print('[*] Loading topology...', self.topology_file)
 
         f = open(self.topology_file, 'r')
@@ -44,13 +79,15 @@ class Topology():
             self.DG.add_weighted_edges_from([(int(s),int(d),int(w))])
 
         assert len(self.DG.nodes()) == self.num_nodes and len(self.DG.edges()) == self.num_links, f'DG.nodes: {len(self.DG.nodes())}, num_nodes : {self.num_nodes}, \n edges: {len(self.DG.edges())} == {self.num_links}'
-        f.close()
-        print('nodes: %d, links: %d\n'%(self.num_nodes, self.num_links))
+        f.close()'''
+        self.generate_topology(12,9920000,self.seed)
+        self.num_nodes = 12
+        #print('nodes: %d, links: %d\n'%(self.num_nodes, self.num_links))
 
-        """plt.figure()
+        '''plt.figure()
         print(self.DG)
         nx.draw(self.DG, pos=nx.circular_layout(self.DG), with_labels=True)
-        plt.show()"""
+        plt.show()'''
 
     def get_topology(self):
         return nx.to_numpy_matrix(self.DG)
@@ -62,7 +99,7 @@ class Topology():
         # Shortest paths
         self.shortest_paths = []
         #self.shortest_paths_file = f'./resources/shortest_path/topology_0'
-        if os.path.exists(self.shortest_paths_file):
+        '''if os.path.exists(self.shortest_paths_file):
             print('[*] Loading shortest paths...', self.shortest_paths_file)
             f = open(self.shortest_paths_file, 'r')
             self.num_pairs = 0
@@ -82,21 +119,20 @@ class Topology():
                     assert node_path.size == np.unique(node_path).size
                     self.shortest_paths[-1].append(node_path)
                     paths = paths[idx+3:]
-        else:
-            print('[!] Calculating shortest paths...')
-            f = open(self.shortest_paths_file, 'w+')
-            self.num_pairs = 0
-            for s in range(self.num_nodes):
-                for d in range(self.num_nodes):
-                    if s != d:
-                        #print(f'{s}:{d}')
-                        self.pair_idx_to_sd.append((s,d))
-                        self.pair_sd_to_idx[(s,d)] = self.num_pairs
-                        self.num_pairs += 1
-                        self.shortest_paths.append(list(nx.all_shortest_paths(self.DG, s, d, weight='weight')))
-                        line = str(s)+'->'+str(d)+': '+str(self.shortest_paths[-1])
-                        f.writelines(line+'\n')
-        
+        else:'''
+        print('[!] Calculating shortest paths...')
+        f = open(self.shortest_paths_file, 'w+')
+        self.num_pairs = 0
+        for s in range(self.num_nodes):
+            for d in range(self.num_nodes):
+                if s != d:
+                    #print(f'{s}:{d}')
+                    self.pair_idx_to_sd.append((s,d))
+                    self.pair_sd_to_idx[(s,d)] = self.num_pairs
+                    self.num_pairs += 1
+                    self.shortest_paths.append(list(nx.all_shortest_paths(self.DG, s, d, weight='weight')))
+                    line = str(s)+'->'+str(d)+': '+str(self.shortest_paths[-1])
+                    f.writelines(line+'\n')
         assert self.num_pairs == self.num_nodes*(self.num_nodes-1), f'{self.num_pairs} {self.num_nodes}'
         f.close()
         
@@ -155,10 +191,10 @@ class Traffic(object):
 
     
 class Environment(object):
-    def __init__(self, config, topology='topology_0', is_training=False,N=2000):
+    def __init__(self, config, topology='topology_0', is_training=False,N=2000, seed=0):
         self.data_dir = './resources/'
         self.topology_name = topology
-        self.topology = Topology(self.data_dir, topology)
+        self.topology = Topology(self.data_dir, topology, seed=seed)
         self.traffic = Traffic(config, self.topology.num_nodes, self.data_dir,topology, is_training=is_training,N=N)
         self.traffic_matrices = self.traffic.traffic_matrices*100*8/300/1000    #kbps
         self.tm_cnt = self.traffic.tm_cnt

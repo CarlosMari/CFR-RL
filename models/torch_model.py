@@ -95,8 +95,6 @@ class Model(nn.Module, ABC):
 
         policy_loss = torch.sum(policy_loss, dim=1, keepdim=True).to(self.device)
 
-        # Why detaching the gradients of the advantages? -> Done in the original
-
         policy_loss = (torch.multiply(policy_loss, (-advantages).detach())).cpu()
 
         policy_loss = policy_loss - entropy_weight * entropy

@@ -282,7 +282,7 @@ def main(_):
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
 
     for i in range(FLAGS.num_agents):
-        env = Environment(config, topology=f'topology_{i+1}', is_training=True,N=TMS)
+        env = Environment(config, topology=f'topology_{i+1}', is_training=True,N=TMS, seed=i+1)
         game = CFRRL_Game(config, env, baseline=METHOD==0)
         games.append(game)
         model_weights_queues.append(mp.JoinableQueue(1))
