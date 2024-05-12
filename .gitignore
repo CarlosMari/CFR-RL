@@ -115,3 +115,5 @@ logs/
 
 wandb/
 torch_ckpts/
+resources/shortest_path/*
+*.txt
