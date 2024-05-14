@@ -6,7 +6,7 @@ import sys
 from game import CFRRL_Game
 
 from models.actor_critic import ActorCriticModel
-from models.policy import PolicyModel
+from algorithms.Reinforce import Reinforce
 from game import CFRRL_Game
 from env import Environment
 from config import get_config
@@ -16,7 +16,7 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 2, 'number of agents')
+flags.DEFINE_integer('num_agents', 15, 'number of agents')
 flags.DEFINE_string('name', 'BLANK', 'name of the run')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
@@ -26,7 +26,7 @@ FLAGS(sys.argv)
 
 
 CHECK_GRADIENTS = True
-WANDB_LOG = True
+WANDB_LOG = False
 LOG_STEPS = 10
 METHOD = FLAGS.method
 TMS = FLAGS.tms
@@ -38,12 +38,12 @@ def central_agent(config, games, model_weight_queues, experience_queues):
     game = games[0]
     if METHOD == 1:
         print("Actor Critic Model")
-        network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
+        algorithm = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=True)
     else:
         print("Policy Model")
-        network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=True, name=FLAGS.name)
+        algorithm = Reinforce(config, game.state_dims, game.action_dim, game.max_moves, master=True, name=FLAGS.name)
     
-    network.name = FLAGS.name
+    algorithm.name = FLAGS.name
     # We initialize wandb
     if WANDB_LOG:
         wandb.init(
@@ -52,26 +52,26 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             name= FLAGS.name,
             # track hyperparameters and run metadata
             config={
-                "learning_rate": network.config.initial_learning_rate,
-                "dataset": network.config.topology_file,
-                "TM": network.config.traffic_file,
-                "architecture": network.config.model_type,
-                "steps": network.config.max_step,
+                "learning_rate": algorithm.config.initial_learning_rate,
+                "dataset": algorithm.config.topology_file,
+                "TM": algorithm.config.traffic_file,
+                "architecture": algorithm.config.model_type,
+                "steps": algorithm.config.max_step,
                 "agents": FLAGS.num_agents,
-                "type": network.config.model_type,
+                "type": algorithm.config.model_type,
                 "framework": "pytorch",
             }
         )
 
-    network.save_hyperparams(config)
+    algorithm.save_hyperparams(config)
     # network.restore_ckpt()
 
     # Initial step from checkpoint should be implemented
     #for step in tqdm(range(network.step, config.max_step), ncols=70, initial=network.step):
     # for step in tqdm(range(network.step, config.max_step)):
-    for step in range(network.step, config.max_step):
-        network.step += 1
-        model_weights = network.get_weights()
+    for step in range(algorithm.step, config.max_step):
+        algorithm.step += 1
+        model_weights = algorithm.get_weights()
         for i in range(FLAGS.num_agents):
             model_weight_queues[i].put(model_weights)
             model_weight_queues[i].join()
@@ -100,7 +100,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float32)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            value_loss, entropy = network._train(s_batch, actions, r_batch, config.entropy_weight, mat_batch)
+            value_loss, entropy = algorithm._train(s_batch, actions, r_batch, config.entropy_weight, mat_batch)
 
 
         # REINFORCE
@@ -118,7 +118,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                 a_batch += [torch.tensor(a, dtype=torch.int64) for a in a_batch_agent]
                 r_batch += [torch.tensor(r, dtype=torch.float64) for r in r_batch_agent]
                 ad_batch += [torch.tensor(ad, dtype=torch.float32) for ad in ad_batch_agent]
-                mats += [torch.tensor(mat) for mat in mat_batch_agent]
+                mats += [mat.clone().detach() for mat in mat_batch_agent]
 
             assert len(s_batch) * game.max_moves == len(a_batch)
 
@@ -127,14 +127,14 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             action_dim = game.action_dim
             actions = torch.zeros(len(a_batch), action_dim, dtype=torch.float64)
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
-            entropy = network._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight, mats)
+            entropy = algorithm._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight, mats)
 
 
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
             num_tms = step * FLAGS.num_agents * FLAGS.num_iter
             if METHOD == 1:
-                actor_learning_rate = network.lr_scheduler_actor.get_last_lr()[0]
+                actor_learning_rate = algorithm.lr_scheduler_actor.get_last_lr()[0]
                 avg_value_loss = np.mean(value_loss)
                 avg_reward = np.mean(r_batch)
                 avg_entropy = torch.mean(entropy)
@@ -149,7 +149,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             else:
                 avg_reward = np.mean(r_batch)
                 avg_entropy = torch.mean(entropy)
-                learning_rate = network.lr_scheduler.get_last_lr()[0]
+                learning_rate = algorithm.conv_net.lr_scheduler.get_last_lr()[0]
                 avg_advantage = np.mean(ad_batch)
                 wandb.log({
                     'learning_rate': learning_rate,
@@ -161,7 +161,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
 
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
-            network.save_ckpt(_print=True)
+            algorithm.save_ckpt(_print=True)
         """if step % config.learning_rate_decay_step == 0:
             network.step_scheduler()"""
 
@@ -171,11 +171,11 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
     if METHOD == 1:
         network = ActorCriticModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     else:
-        network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves, master=False)
+        network = Reinforce(config, game.state_dims, game.action_dim, game.max_moves, master=False)
     print(f"Creating agent {agent_id}, using {network.device}")
-    # Initial synchronization of the model weights
-    # I have to check the format of the weights in the queue
-    mat = torch.from_numpy(game.get_topology().flatten())
+
+
+    mat = torch.from_numpy(game.get_topology()).unsqueeze(0) # (C, H, W), (1, 12, 12)
     model_weights = model_weight_queues.get()
     model_weight_queues.task_done()
     network.load_state_dict(model_weights)
@@ -193,29 +193,25 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
     while True:
         tm_idx = tm_subset[idx]
-        state = torch.from_numpy(game.get_state(tm_idx))
-        s_batch.append(state)
+        state = torch.from_numpy(game.get_state(tm_idx)).permute(2,0,1) # C,H,W (1, 12, 12)
+        s_batch.append(state) 
 
         with torch.no_grad():
-            # [B, C_in, H, W]
-            extended_state = torch.unsqueeze(state, 0).permute(0, 3, 1, 2)
-
             if METHOD== 1:
-                _, _, policy = network(extended_state, mat)
+                _, _, policy = network(state, mat)
             else:
-                logits, policy = network(extended_state, mat)
+                # We add the batch dimension
+                logits, policy = network(state.unsqueeze(0), mat.unsqueeze(0))
 
         assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
-        #print(game.env.topology_name)
-        #print(extended_state)
-        #print(logits)
-        #print(policy.view(-1))
+
         actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
+        
 
         for a in actions:
             a_batch.append(a)
 
-        mat_batch.append(game.get_topology())
+        mat_batch.append(mat)
         # Rewards
         reward = game.reward(tm_idx, actions)
         r_batch.append(reward)

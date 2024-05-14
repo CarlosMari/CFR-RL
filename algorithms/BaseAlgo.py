@@ -29,10 +29,6 @@ class Model(nn.Module, ABC):
         self.device = 'cpu'
 
 
-    @abstractmethod
-    def initialize_optimizers(self):
-        raise NotImplementedError
-
     def check_gradients(model):
         for param in model.parameters():
             if param.grad is not None:
@@ -40,10 +36,6 @@ class Model(nn.Module, ABC):
                     print("NaNs detected in gradients!")
                     return True
         return False
-
-    @abstractmethod
-    def step_scheduler(self):
-        raise NotImplementedError
 
     @staticmethod
     def softmax_cross_entropy_with_logits(labels, logits, dim=-1):

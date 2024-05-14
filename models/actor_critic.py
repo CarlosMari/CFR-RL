@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import os
 import inspect
-from .torch_model import Model
+from algorithms.BaseAlgo import Model
 from torch.optim.lr_scheduler import ExponentialLR
 
 class ActorCriticModel(Model):
@@ -152,6 +152,9 @@ class ActorCriticModel(Model):
         # We make sure the vectors are pytorch vectors
         mats = torch.stack(mats, dim=0).to(self.device)
         inputs = torch.stack(inputs, dim=0)
+        print('=======================')
+        print(f'{mats.shape=}: {inputs.shape=}')
+        print('=======================')
         # print(inputs.shape)
         # rewards = torch.tensor(rewards, dtype=torch.float64)
         # actions = torch.tensor(actions, dtype=torch.float64)

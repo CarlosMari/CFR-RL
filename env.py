@@ -40,8 +40,8 @@ class Topology():
         self.link_weights = np.empty((self.num_links))
         index = 0
         for s,d,data in M.edges(data=True):
-            self.DG.add_edge(s, d, weight=w)
-            self.DG.add_edge(d, s, weight=w)
+            self.DG.add_edge(s, d, weight=1)
+            self.DG.add_edge(d, s, weight=1)
             self.link_idx_to_sd[int(index)] = (int(s),int(d))
             self.link_sd_to_idx[(int(s),int(d))] = int(index)
             self.link_capacities[int(index)] = float(w)
