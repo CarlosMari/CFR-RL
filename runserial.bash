@@ -2,7 +2,7 @@
 #SBATCH -J launcher-test            # job name
 #SBATCH -o launcher.o%j             # output and error file name (%j expands to SLURM jobID)
 #SBATCH -N 1                        # number of nodes requested
-#SBATCH -n 3                        # total number of tasks to run in parallel
+#SBATCH -n 1                        # total number of tasks to run in parallel
 #SBATCH -p development              # queue (partition) 
 #SBATCH -t 00:30:00                 # run time (hh:mm:ss) 
 #SBATCH --mail-type=all             # Send email at begin and end of job
