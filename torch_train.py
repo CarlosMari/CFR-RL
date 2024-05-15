@@ -16,7 +16,7 @@ from absl import flags
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_agents', 15, 'number of agents')
+flags.DEFINE_integer('num_agents', 1, 'number of agents')
 flags.DEFINE_string('name', 'BLANK', 'name of the run')
 flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, best: best reward as baseline')
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
@@ -26,8 +26,8 @@ FLAGS(sys.argv)
 
 
 CHECK_GRADIENTS = True
-WANDB_LOG = False
-LOG_STEPS = 10
+WANDB_LOG = True
+LOG_STEPS = 10 
 METHOD = FLAGS.method
 TMS = FLAGS.tms
 if WANDB_LOG:
@@ -205,8 +205,8 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
         assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
 
-        actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
-        
+        #actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
+        actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
 
         for a in actions:
             a_batch.append(a)

@@ -8,31 +8,36 @@ from models.BaseModel import BaseModel
 
 class ConvNet(BaseModel):
     def __init__(self, config, input_dim, action_dim, max_moves, master=True, name='None'):
+        print('Creating CONVNET')
         super(ConvNet, self).__init__(config, input_dim, action_dim, max_moves, master, name)
         self.version = 'Conv'
 
         self.conv_block = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=3, padding=1),
-            nn.LeakyReLU(),
+            nn.Conv2d(1, 64, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.GELU(),
             nn.Flatten(),
             nn.Linear(128 * 12 * 12, 500),
-            nn.LeakyReLU(),
+            nn.GELU(),
             nn.Linear(500, 288),
-            nn.LeakyReLU()
+            nn.GELU()
         )
 
         self.conv_block2 = nn.Sequential(
-            nn.Conv2d(1, 128, kernel_size=3, padding=1),
-            nn.LeakyReLU(),
+            nn.Conv2d(1, 64, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.GELU(),
             nn.Flatten(),
             nn.Linear(128 * 12 * 12, 288),
-            nn.LeakyReLU(),
+            nn.GELU(),
         )
 
         self.mlp = nn.Sequential(
-            #nn.Linear(288*2,288, dtype=torch.float64),
-            #nn.LeakyReLU(),
-            nn.Linear(288*2, action_dim, dtype=torch.float64),
+            nn.Linear(288*2,288),
+            nn.LeakyReLU(),
+            nn.Linear(288, action_dim),
         )
         # 288
         #self.action_layer = nn.Linear(288, action_dim, dtype=torch.float64)
@@ -58,7 +63,7 @@ class ConvNet(BaseModel):
 
         x = self.conv_block(inputs)
         x_2 = self.conv_block2(mat)
-        final_x = torch.cat((x, x_2), dim=1).to(torch.double)  # [B,288]
+        final_x = torch.cat((x, x_2), dim=1)#.to(torch.double)  # [B,288]
 
         logits = self.mlp(final_x)
 

@@ -79,7 +79,7 @@ class Model(nn.Module, ABC):
         entropy = entropy.unsqueeze(-1)
         policy = policy.unsqueeze(-1)
 
-        product = torch.matmul(actions, policy).squeeze()
+        product = torch.matmul(actions.float(), policy).squeeze()
         # Ensures the minimum is log_epilon
         policy_loss = torch.log(
             torch.clamp(product, min=log_epsilon)

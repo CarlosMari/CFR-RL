@@ -54,7 +54,7 @@ class Topology():
             index += 1
 
         self.num_links = self.DG.number_of_edges()
-    def load_topology(self):
+    def load_topology(self, plot=False):
         '''
         print('[*] Loading topology...', self.topology_file)
 
@@ -75,19 +75,20 @@ class Topology():
             self.link_idx_to_sd[int(i)] = (int(s),int(d))
             self.link_sd_to_idx[(int(s),int(d))] = int(i)
             self.link_capacities[int(i)] = float(c)
-            self.link_weights[int(i)] = int(w)
-            self.DG.add_weighted_edges_from([(int(s),int(d),int(w))])
+            self.link_weights[int(i)] = int(c)
+            self.DG.add_weighted_edges_from([(int(s),int(d),int(c))])
 
         assert len(self.DG.nodes()) == self.num_nodes and len(self.DG.edges()) == self.num_links, f'DG.nodes: {len(self.DG.nodes())}, num_nodes : {self.num_nodes}, \n edges: {len(self.DG.edges())} == {self.num_links}'
         f.close()'''
         self.generate_topology(12,9920000,self.seed)
         self.num_nodes = 12
         #print('nodes: %d, links: %d\n'%(self.num_nodes, self.num_links))
-
-        '''plt.figure()
-        print(self.DG)
-        nx.draw(self.DG, pos=nx.circular_layout(self.DG), with_labels=True)
-        plt.show()'''
+        
+        if plot:
+            plt.figure()
+            print(self.DG)
+            nx.draw(self.DG, pos=nx.circular_layout(self.DG), with_labels=True)
+            plt.show()
 
     def get_topology(self):
         return nx.to_numpy_matrix(self.DG)

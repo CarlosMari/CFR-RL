@@ -109,8 +109,10 @@ class Game(object):
         self.load_multiplier = {}
 
 
-    def get_topology(self):
+    def get_topology(self, normalize=True):
         mat = nx.adjacency_matrix(self.DG).toarray()
+        if normalize:
+            mat = (mat.flatten() / np.max(mat.flatten())).reshape(12,12)
         return mat.astype('float')
 
     def generate_inputs(self, normalization=True):

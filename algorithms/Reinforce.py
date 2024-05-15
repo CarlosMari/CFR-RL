@@ -10,6 +10,7 @@ from utils.weight_utils import weight_init
 import json
 from models.ConvNet import ConvNet
 from models.AttentionPolicy import AttentionPolicy
+from models.SimpleMLP import SimpleMLP
 
 class Reinforce(Model):
 
@@ -20,7 +21,7 @@ class Reinforce(Model):
         self.action_dim = action_dim
         self.config = config
         self.name = name
-        self.conv_net = AttentionPolicy(config, input_dim, action_dim, max_moves, master=True, name=name)
+        self.conv_net = SimpleMLP(config,input_dim, action_dim, max_moves, master=True, name=name)
 
 
         if master:
