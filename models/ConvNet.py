@@ -8,7 +8,6 @@ from models.BaseModel import BaseModel
 
 class ConvNet(BaseModel):
     def __init__(self, config, input_dim, action_dim, max_moves, master=True, name='None'):
-        print('Creating CONVNET')
         super(ConvNet, self).__init__(config, input_dim, action_dim, max_moves, master, name)
         self.version = 'Conv'
 

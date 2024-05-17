@@ -21,7 +21,7 @@ class Reinforce(Model):
         self.action_dim = action_dim
         self.config = config
         self.name = name
-        self.conv_net = SimpleMLP(config,input_dim, action_dim, max_moves, master=True, name=name)
+        self.conv_net = ConvNet(config,input_dim, action_dim, max_moves, master=True, name=name)
 
 
         if master:

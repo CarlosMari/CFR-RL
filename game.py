@@ -474,11 +474,11 @@ class CFRRL_Game(Game):
     def reward(self, tm_idx, actions):
         mlu, _ = self.optimal_routing_mlu_critical_pairs(tm_idx, actions)
 
-        ecmp_mlu, _ = self.eval_ecmp_traffic_distribution(tm_idx, eval_delay=False)
+        #ecmp_mlu, _ = self.eval_ecmp_traffic_distribution(tm_idx, eval_delay=False)
 
         #quasi_optimal, _ = self.optimal_routing_mlu(tm_idx, True)
         #optimal_mlu, _ = self.optimal_routing_mlu(tm_idx)
-
+        #print(optimal_mlu)
 
         # Critical MLU
         crit_topk = self.get_critical_topK_flows(tm_idx)
@@ -486,17 +486,29 @@ class CFRRL_Game(Game):
         crit_mlu, _ = self.eval_critical_flow_and_ecmp(tm_idx, crit_topk, solution, eval_delay=False)
 
 
+        
+
         """ print(f"Execution time: {execution_time} seconds")
         print(f"Quasi Optimal {quasi_optimal}, Optimal {optimal_mlu}, ECMP: {ecmp_mlu}")"""
         #_, solution = self.optimal_routing_mlu_critical_pairs(tm_idx, actions)
-
+        '''print('======================================')
         if mlu < crit_mlu:
+            print(1)
             reward = 1 + (crit_mlu - mlu) / crit_mlu
-        elif (abs(crit_mlu - ecmp_mlu) < 0.000005 ):
-            reward = 0.5
+        elif (abs(crit_mlu - ecmp_mlu) == 0):
+            print(2)
+            reward = 0.9
+
         else:
+            print(3)
             reward = (1 - 2 * abs(mlu - crit_mlu) / abs(crit_mlu - ecmp_mlu))
 
+
+
+        print(reward)
+        print('=======================================')'''
+        reward = crit_mlu / mlu 
+        #print(reward)
         #reward = (ecmp_mlu / mlu) - 1
         #print(f'mlu: {mlu}, optimal: {optimal_mlu}, ecmp: {ecmp_mlu}, reward: {reward}')
 

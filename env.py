@@ -55,8 +55,8 @@ class Topology():
 
         self.num_links = self.DG.number_of_edges()
     def load_topology(self, plot=False):
-        '''
-        print('[*] Loading topology...', self.topology_file)
+        
+        '''print('[*] Loading topology...', self.topology_file)
 
         f = open(self.topology_file, 'r')
         header = f.readline()
