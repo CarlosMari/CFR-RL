@@ -3,17 +3,17 @@ from tqdm import tqdm
 # import multiprocessing as mp
 import torch.multiprocessing as mp
 import sys
-from game import CFRRL_Game
+from environment.game import CFRRL_Game
 
 from models.actor_critic import ActorCriticModel
 from algorithms.Reinforce import Reinforce
-from game import CFRRL_Game
-from env import Environment
+from environment.game import CFRRL_Game
+from environment.env import Environment
 from config import get_config
 import numpy as np
 from absl import app
 from absl import flags
-
+import random
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('num_agents', 1, 'number of agents')
@@ -26,7 +26,7 @@ FLAGS(sys.argv)
 
 
 CHECK_GRADIENTS = True
-WANDB_LOG = True
+WANDB_LOG = False
 LOG_STEPS = 10 
 METHOD = FLAGS.method
 TMS = FLAGS.tms
@@ -129,7 +129,7 @@ def central_agent(config, games, model_weight_queues, experience_queues):
             actions.scatter_(1, torch.tensor(a_batch).unsqueeze(1), 1)
             entropy = algorithm._train(s_batch, actions, np.vstack(ad_batch).astype(np.float32), config.entropy_weight, mats)
 
-
+        #print(algorithm.conv_net.lr_scheduler.get_last_lr()[0])
         # Log training information - Should be moved to model.
         if WANDB_LOG and step % LOG_STEPS == 0:
             num_tms = step * FLAGS.num_agents * FLAGS.num_iter
@@ -137,6 +137,8 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                 actor_learning_rate = algorithm.lr_scheduler_actor.get_last_lr()[0]
                 avg_value_loss = np.mean(value_loss)
                 avg_reward = np.mean(r_batch)
+                max_reward = np.max(r_batch)
+                min_reward = np.min(r_batch)
                 avg_entropy = torch.mean(entropy)
 
                 wandb.log({
@@ -144,17 +146,35 @@ def central_agent(config, games, model_weight_queues, experience_queues):
                     'loss': avg_value_loss,
                     'reward': avg_reward,
                     'entropy': avg_entropy,
+                    'max_reward': max_reward,
+                    'min_reward': min_reward,
                     'tm_count': num_tms,
                 }, step=step+1)
             else:
+                rs = np.array(r_batch)
+                better = np.sum(rs > 1)/ len(rs)
+                worse = np.sum(rs < 1) / len(rs)
+                worse_mean = np.mean(rs[rs < 1])
+                try:
+                    better_mean = np.mean(rs[rs > 1])
+                except:
+                    better_mean = 1
                 avg_reward = np.mean(r_batch)
                 avg_entropy = torch.mean(entropy)
                 learning_rate = algorithm.conv_net.lr_scheduler.get_last_lr()[0]
                 avg_advantage = np.mean(ad_batch)
+                max_reward = np.max(r_batch)
+                min_reward = np.min(r_batch)
                 wandb.log({
                     'learning_rate': learning_rate,
                     'advantage': avg_advantage,
                     'reward': avg_reward,
+                    'better': better,
+                    'worse': worse,
+                    'worse_mean': worse_mean,
+                    'better_mean': better_mean,
+                    'max_reward': max_reward,
+                    'min_reward': min_reward,
                     'entropy': avg_entropy,
                     'tm_count': num_tms
                 }, step=step+1)
@@ -162,10 +182,11 @@ def central_agent(config, games, model_weight_queues, experience_queues):
         # Saves a checkpoint every n steps
         if step % config.save_step == config.save_step - 1:
             algorithm.save_ckpt(_print=True)
-        """if step % config.learning_rate_decay_step == 0:
-            network.step_scheduler()"""
+        if step % config.learning_rate_decay_step == 0 and step != 0:
+            algorithm.step_scheduler()
 
 def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_queue):
+    global_step = 0
     random_state = np.random.RandomState(seed=agent_id)
 
     if METHOD == 1:
@@ -206,7 +227,19 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         assert np.count_nonzero(policy.numpy()[0]) >= game.max_moves, (policy, state)
 
         #actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
-        actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
+
+        if global_step < 7500:
+            if random.randint(0,10) < 5:
+                """possibles = np.array(list(range(game.num_pairs)))
+                actions = np.random.choice(possibles, size=game.max_moves, replace=False)"""
+                actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
+            else:
+                actions = game.get_critical_topK_flows(tm_idx)
+
+        else:
+            actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
+            if global_step == 7500:
+                print('Done exploration')
 
         for a in actions:
             a_batch.append(a)
@@ -250,6 +283,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
         if idx == num_tms:
             random_state.shuffle(tm_subset)
             idx = 0
+        global_step += 1
 
 
 def main(_):

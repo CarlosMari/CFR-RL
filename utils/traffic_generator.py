@@ -1,6 +1,6 @@
 import numpy as np
 
-def generate_tm(num_nodes=12, scale=1, total_traffic=1e8, N=1) -> np.array:
+def generate_tm(num_nodes=12, scale=1, total_traffic=2e8, N=1) -> np.array:
     """
     Generate synthetic traffic matrices based on the gravity model.
     num_nodes: int

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import os
 import inspect
 
-from game import Game
+from environment.game import Game
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import ExponentialLR
 # import torch.utils.tensorboard as tensorboard

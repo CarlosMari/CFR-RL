@@ -18,8 +18,10 @@ class ConvNet(BaseModel):
             nn.GELU(),
             nn.Flatten(),
             nn.Linear(128 * 12 * 12, 500),
+            nn.LayerNorm(500),
             nn.GELU(),
             nn.Linear(500, 288),
+            nn.LayerNorm(288),
             nn.GELU()
         )
 
@@ -29,12 +31,17 @@ class ConvNet(BaseModel):
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.GELU(),
             nn.Flatten(),
-            nn.Linear(128 * 12 * 12, 288),
+            nn.Linear(128 * 12 * 12, 500),
+            nn.LayerNorm(500),
+            nn.GELU(),
+            nn.Linear(500, 288),
+            nn.LayerNorm(288),
             nn.GELU(),
         )
 
         self.mlp = nn.Sequential(
             nn.Linear(288*2,288),
+            nn.LayerNorm(288),
             nn.LeakyReLU(),
             nn.Linear(288, action_dim),
         )

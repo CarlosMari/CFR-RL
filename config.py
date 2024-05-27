@@ -7,8 +7,8 @@ class NetworkConfig(object):
     max_step = 1000 * scale
 
     initial_learning_rate = 0.0001
-    learning_rate_decay_rate = 0.96
-    learning_rate_decay_step = 5 * scale
+    learning_rate_decay_rate = 1
+    learning_rate_decay_step = 500#1#5 * scale
     moving_average_decay = 0.9999
     entropy_weight = 0.1
 

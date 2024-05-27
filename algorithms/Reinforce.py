@@ -51,6 +51,9 @@ class Reinforce(Model):
 
     def __call__(self, input, mat):
         return self.conv_net(input, mat)
+    
+    def step_scheduler(self):
+        self.conv_net.step_scheduler()
 
     def _train(self, inputs, actions, advantages, entropy_weight, mats):
         mats = torch.stack(mats, dim=0).to(self.device)

@@ -7,8 +7,8 @@ from absl import app
 from absl import flags
 
 import tensorflow as tf
-from env import Environment
-from game import CFRRL_Game
+from environment.env import Environment
+from environment.game import CFRRL_Game
 from model import Network
 from config import get_config
 

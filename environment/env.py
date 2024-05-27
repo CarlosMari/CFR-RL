@@ -8,6 +8,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from utils.traffic_generator import generate_tm
+import random
 
 class Topology():
     def __init__(self, data_dir='./resources/', topology='Abilene', seed=1):
@@ -29,7 +30,8 @@ class Topology():
         num_links: int
             Number of links of the topology. Must be greater or equal to the number of nodes.
         """
-
+        
+        
         M = nx.random_internet_as_graph(num_nodes, seed=seed)
         print(f'Generating topology {seed}')
         self.num_links = M.number_of_edges() * 2
@@ -40,8 +42,15 @@ class Topology():
         self.link_weights = np.empty((self.num_links))
         index = 0
         for s,d,data in M.edges(data=True):
-            self.DG.add_edge(s, d, weight=1)
-            self.DG.add_edge(d, s, weight=1)
+            r = random.randint(1,10)
+            if r < 3:
+                w = 2480000
+            elif r < 5:
+                w = 4960000
+            else:
+                w = 9920000
+            self.DG.add_edge(s, d, weight=w)
+            self.DG.add_edge(d, s, weight=w)
             self.link_idx_to_sd[int(index)] = (int(s),int(d))
             self.link_sd_to_idx[(int(s),int(d))] = int(index)
             self.link_capacities[int(index)] = float(w)
@@ -54,9 +63,10 @@ class Topology():
             index += 1
 
         self.num_links = self.DG.number_of_edges()
+    
     def load_topology(self, plot=False):
-        
-        '''print('[*] Loading topology...', self.topology_file)
+        '''
+        print('[*] Loading topology...', self.topology_file)
 
         f = open(self.topology_file, 'r')
         header = f.readline()

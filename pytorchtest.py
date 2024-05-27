@@ -1,9 +1,9 @@
 import torch
 from absl import app
-from env import Environment
-from game import CFRRL_Game
-from actor_critic import ActorCriticModel
-from policy import PolicyModel
+from environment.env import Environment
+from environment.game import CFRRL_Game
+from models.actor_critic import ActorCriticModel
+from algorithms.Reinforce import Reinforce
 from config import get_config
 from absl import flags
 import torch
@@ -11,7 +11,7 @@ import wandb
 from tqdm import tqdm
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('ckpt', './torch_ckpts/4.2.7/checkpoint_policy.pth', 'apply a specific checkpoint')
+flags.DEFINE_string('ckpt', './torch_ckpts/TM_TEST/checkpoint_policy.pth', 'apply a specific checkpoint')
 flags.DEFINE_boolean('eval_delay', False, 'evaluate delay or not')
 
 def sim(config, network, game):
@@ -41,7 +41,7 @@ def main(_):
         if config.method == 'actor_critic':
                 network = ActorCriticModel(config,game.state_dims,game.action_dim, game.max_moves, master=False)
         else:
-                network = PolicyModel(config, game.state_dims, game.action_dim, game.max_moves)
+                network = Reinforce(config, game.state_dims, game.action_dim, game.max_moves)
 
         wandb.init(
                 # set the wandb project where this run will be logged
