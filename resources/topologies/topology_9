@@ -1,4 +1,4 @@
-Node_num: 12,Edge_num: 28
+Node_num: 12,Edge_num: 30
 Link_index,Source,Destination,OSPF,Capacity(kbps)
 0,0,1,1,9920000
 1,1,0,1,9920000
