@@ -40,6 +40,7 @@ class Topology():
         self.link_sd_to_idx = {}
         self.link_capacities = np.empty((self.num_links))
         self.link_weights = np.empty((self.num_links))
+        self.seed = seed
         index = 0
         for s,d,data in M.edges(data=True):
             r = random.randint(1,10)
@@ -65,7 +66,7 @@ class Topology():
         self.num_links = self.DG.number_of_edges()
     
     def load_topology(self, plot=False):
-        '''
+        
         print('[*] Loading topology...', self.topology_file)
 
         f = open(self.topology_file, 'r')
@@ -77,6 +78,7 @@ class Topology():
         self.link_sd_to_idx = {}
         self.link_capacities = np.empty((self.num_links))
         self.link_weights = np.empty((self.num_links))
+
         for line in f:
             #print(line)
             link = line.split(',')
@@ -87,10 +89,11 @@ class Topology():
             self.link_capacities[int(i)] = float(c)
             self.link_weights[int(i)] = int(c)
             self.DG.add_weighted_edges_from([(int(s),int(d),int(c))])
+                
 
-        assert len(self.DG.nodes()) == self.num_nodes and len(self.DG.edges()) == self.num_links, f'DG.nodes: {len(self.DG.nodes())}, num_nodes : {self.num_nodes}, \n edges: {len(self.DG.edges())} == {self.num_links}'
-        f.close()'''
-        self.generate_topology(12,9920000,self.seed)
+        #assert len(self.DG.nodes()) == self.num_nodes and len(self.DG.edges()) == self.num_links, f'DG.nodes: {len(self.DG.nodes())}, num_nodes : {self.num_nodes}, \n edges: {len(self.DG.edges())} == {self.num_links}'
+        f.close()
+        #self.generate_topology(12,9920000,self.seed)
         self.num_nodes = 12
         #print('nodes: %d, links: %d\n'%(self.num_nodes, self.num_links))
         

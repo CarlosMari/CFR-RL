@@ -26,7 +26,7 @@ FLAGS(sys.argv)
 
 
 CHECK_GRADIENTS = True
-WANDB_LOG = False
+WANDB_LOG = True
 LOG_STEPS = 10 
 METHOD = FLAGS.method
 TMS = FLAGS.tms
@@ -228,18 +228,16 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
         #actions = random_state.choice(game.action_dim, game.max_moves, p=policy.view(-1), replace=False)
 
-        if global_step < 7500:
+        """if global_step < 12500:
             if random.randint(0,10) < 5:
-                """possibles = np.array(list(range(game.num_pairs)))
-                actions = np.random.choice(possibles, size=game.max_moves, replace=False)"""
                 actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
             else:
                 actions = game.get_critical_topK_flows(tm_idx)
 
-        else:
-            actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
-            if global_step == 7500:
-                print('Done exploration')
+        else:"""
+        actions = torch.multinomial(policy.view(-1), game.max_moves,replacement=False).numpy()
+        if global_step == 7500:
+            print('Done exploration')
 
         for a in actions:
             a_batch.append(a)
