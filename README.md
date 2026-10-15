@@ -1,3 +1,40 @@
+# CFR-RL in PyTorch: generalizing across network topologies
+
+This fork ports [CFR-RL](https://github.com/jrayzhang6/CFR-RL) (Zhang et al., IEEE JSAC 2020) from
+TensorFlow to **PyTorch** and extends it toward a policy that works on network topologies it was not
+trained on. CFR-RL learns which *critical flows* to reroute: the policy picks K source–destination
+pairs, an LP routes them optimally, and every other flow stays on ECMP shortest paths.
+
+**What this fork adds**
+
+- **Multi-topology training:** each worker trains on a different topology (`resources/topologies/`:
+  15 training topologies with 12 nodes each: BSO plus random internet-like graphs). `topology_0`
+  (Abilene) is held out for testing.
+- **Topology-aware policy** (`models/ConvNet.py`): two convolutional towers, one over the normalized
+  traffic matrix and one over the link-capacity matrix, joined by an MLP that scores every
+  source–destination pair.
+- **Reward against a strong heuristic** (`environment/game.py`): the policy's max-link utilization is
+  compared with the critical-top-K heuristic on the same traffic matrix.
+- **REINFORCE with a per-traffic-matrix average baseline** (`algorithms/Reinforce.py`), trained with
+  `torch.multiprocessing`: a central learner plus one worker per topology. Metrics go to Weights &
+  Biases.
+- Synthetic gravity-model traffic (`utils/traffic_generator.py`) and SLURM scripts for TACC Frontera
+  (`config.slurm`, `runserial.bash`).
+
+**Run**
+
+```bash
+pip install -r requirements.txt          # LPs need the GLPK solver (e.g. apt install glpk-utils)
+python torch_train.py --num_agents 4 --name my-run
+python pytorchtest.py --ckpt ./torch_ckpts/my-run/checkpoint_policy.pth   # evaluate on Abilene
+```
+
+Status: research code, work in progress. The policy is fixed to 12-node topologies.
+
+The original README follows; its TensorFlow commands no longer apply to this fork.
+
+---
+
 # CFR-RL: Traffic Engineering with Reinforcement Learning in SDN
 
 This is a Tensorflow implementation of CFR-RL as described in our paper:
