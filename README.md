@@ -8,7 +8,8 @@ pairs, an LP routes them optimally, and every other flow stays on ECMP shortest 
 **What this fork adds**
 
 - **Multi-topology training:** each worker trains on a different topology (`resources/topologies/`:
-  15 random internet-like 12-node graphs). `topology_0` (Abilene) is held out for testing.
+  15 training topologies with 12 nodes each: BSO plus random internet-like graphs). `topology_0`
+  (Abilene) is held out for testing.
 - **Topology-aware policy** (`models/ConvNet.py`): two convolutional towers, one over the normalized
   traffic matrix and one over the link-capacity matrix, joined by an MLP that scores every
   source–destination pair.
