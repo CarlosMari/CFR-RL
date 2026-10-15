@@ -78,7 +78,10 @@ class Reinforce(Model):
         return entropy
 
     def restore_ckpt(self, checkpoint_path=None):
-        self.conv_net.restore_ckpt(checkpoint_path)
+        if checkpoint_path is None:
+            checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint_policy.pth')
+        self.step = self.conv_net.restore_ckpt(checkpoint_path)
+        return self.step
 
     def save_ckpt(self, _print=True):
         if not os.path.exists(self.ckpt_dir):

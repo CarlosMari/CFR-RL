@@ -26,3 +26,13 @@ class BaseModel(nn.Module):
     
     def step_scheduler(self):
         self.lr_scheduler.step()
+
+    def restore_ckpt(self, checkpoint_path):
+        """Load weights and optimizer state saved by Reinforce.save_ckpt; returns the saved step."""
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        self.load_state_dict(checkpoint['model_state_dict'])
+        if 'optimizer_state_dict' in checkpoint and hasattr(self, 'optimizer'):
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        step = checkpoint.get('step', 0)
+        print(f"Restoring checkpoint {checkpoint_path} (step {step})")
+        return step

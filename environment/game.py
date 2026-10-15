@@ -461,6 +461,7 @@ class CFRRL_Game(Game):
         
         if baseline:
             self.baseline = {}
+        self.crit_mlu_cache = {}
 
         self.generate_inputs(normalization=True)
         self.state_dims = self.normalized_traffic_matrices.shape[1:]
@@ -480,9 +481,11 @@ class CFRRL_Game(Game):
         #optimal_mlu, _ = self.optimal_routing_mlu(tm_idx)
         #print(optimal_mlu)
 
-        # Critical MLU
-        crit_topk = self.get_critical_topK_flows(tm_idx)
-        crit_mlu, _ = self.optimal_routing_mlu_critical_pairs(tm_idx, crit_topk)
+        # Critical MLU (the heuristic baseline): depends only on the TM, so it is solved once per TM
+        if tm_idx not in self.crit_mlu_cache:
+            crit_topk = self.get_critical_topK_flows(tm_idx)
+            self.crit_mlu_cache[tm_idx], _ = self.optimal_routing_mlu_critical_pairs(tm_idx, crit_topk)
+        crit_mlu = self.crit_mlu_cache[tm_idx]
         #crit_mlu, _ = self.eval_critical_flow_and_ecmp(tm_idx, crit_topk, solution, eval_delay=False)
 
         reward = ((crit_mlu - mlu)/crit_mlu) + 1

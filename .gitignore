@@ -117,3 +117,13 @@ wandb/
 torch_ckpts/
 resources/shortest_path/*
 *.txt
+
+# Training artifacts
+torch_ckpts/
+*.pt
+*.pth
+resources/shortest_path/
+wandb/
+out*.txt
+Output.o*
+Error.e*
