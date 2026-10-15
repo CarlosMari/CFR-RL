@@ -2,6 +2,7 @@ import torch
 from tqdm import tqdm
 # import multiprocessing as mp
 import torch.multiprocessing as mp
+import os
 import sys
 from environment.game import CFRRL_Game
 
@@ -22,6 +23,7 @@ flags.DEFINE_string('baseline', 'avg', 'avg: use average reward as baseline, bes
 flags.DEFINE_integer('num_iter', 10, 'Number of iterations each agent would run')
 flags.DEFINE_integer('method',0,'0-> Policy, 1 -> Actor Critic')
 flags.DEFINE_integer('tms',2000,'Number of TMS per agent')
+flags.DEFINE_boolean('detect_anomaly', False, 'Enable torch autograd anomaly detection (slow; for debugging NaNs)')
 FLAGS(sys.argv)
 
 
@@ -286,7 +288,7 @@ def agent(agent_id, config, game, tm_subset, model_weight_queues, experience_que
 
 def main(_):
     #torch.cuda.set_device(-1)  # Set an invalid device number
-    torch.autograd.set_detect_anomaly(True)
+    torch.autograd.set_detect_anomaly(FLAGS.detect_anomaly)
     # Set the logging level
     #torch.backends.cudnn.benchmark = True # False  # Disable CUDA optimizations for deterministic behavior
     # torch.backends.cudnn.deterministic = True  # Ensure deterministic behavior
@@ -308,6 +310,11 @@ def main(_):
 
         # FLAGS.num_agents = 1
     print(f'Number of agents: {FLAGS.num_agents + 1}, Number iterations: {FLAGS.num_iter}')
+
+    available = len([f for f in os.listdir('./resources/topologies') if f.startswith('topology_')])
+    if FLAGS.num_agents > available - 1:
+        raise SystemExit(f'--num_agents={FLAGS.num_agents} needs topology_1..topology_{FLAGS.num_agents}, '
+                         f'but only topology_1..topology_{available - 1} exist (topology_0 is held out for testing).')
 
     for i in range(FLAGS.num_agents):
         env = Environment(config, topology=f'topology_{i+1}', is_training=True,N=TMS, seed=i+1)

@@ -104,7 +104,7 @@ class Topology():
             plt.show()
 
     def get_topology(self):
-        return nx.to_numpy_matrix(self.DG)
+        return nx.to_numpy_array(self.DG)
 
     def calculate_paths(self):
         print(f"Calculating paths for: {self.shortest_paths_file}")
@@ -135,6 +135,7 @@ class Topology():
                     paths = paths[idx+3:]
         else:'''
         print('[!] Calculating shortest paths...')
+        os.makedirs(os.path.dirname(self.shortest_paths_file), exist_ok=True)
         f = open(self.shortest_paths_file, 'w+')
         self.num_pairs = 0
         for s in range(self.num_nodes):

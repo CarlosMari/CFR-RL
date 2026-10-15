@@ -79,17 +79,3 @@ class ConvNet(BaseModel):
         policy = F.softmax(logits, dim=1)
 
         return logits.cpu(), policy.cpu()
-
-
-
-    '''def restore_ckpt(self, checkpoint_path=None):
-        if checkpoint_path is None:
-            checkpoint_path = os.path.join(self.ckpt_dir, 'checkpoint.pth')
-
-        checkpoint = torch.load(checkpoint_path)
-        self.load_state_dict(checkpoint['model_state_dict'])
-        # print(checkpoint['critic_optimizer_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.step = checkpoint['step']
-        print(f"Restoring Checkpoint.... Step: {self.step}")
-'''

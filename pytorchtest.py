@@ -22,10 +22,10 @@ def sim(config, network, game):
                 if config.method == 'actor_critic':
                         network.actor.eval()
                         network.critic.eval()
-                        _, _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2),torch.from_numpy(mat.flatten()))
+                        _, _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2),torch.from_numpy(mat).unsqueeze(0).unsqueeze(0))
                 else:
                         network.eval()
-                        _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2),torch.from_numpy(mat.flatten()))
+                        _, policy = network(torch.from_numpy(state).unsqueeze(0).permute(0, 3, 1, 2),torch.from_numpy(mat).unsqueeze(0).unsqueeze(0))
                 # Change it so it works with pure policy as well
 
                 actions = policy[0].argsort()[-game.max_moves:].numpy()
