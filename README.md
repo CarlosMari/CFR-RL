@@ -1,3 +1,26 @@
+# CFR-RL in PyTorch: toward topology generalization
+
+This fork ports [CFR-RL](https://github.com/jrayzhang6/CFR-RL) (Zhang et al., IEEE JSAC 2020) from
+TensorFlow to **PyTorch** as the base for research on making the policy generalize to unseen network
+topologies.
+
+- `torch_model.py`: the policy and actor-critic models in PyTorch.
+- `torch_train.py`: distributed training with `torch.multiprocessing`: a central agent and one
+  worker per CPU core that exchange weights and experience through queues. Metrics are logged to
+  Weights & Biases.
+- `torch_ckpts/`, `model_weights.pth`: trained checkpoints for Abilene.
+
+The ongoing generalization work (actor-critic updates, reward changes, imitation learning, layer
+normalization) is on the [`Frontera2`](../../tree/Frontera2) branch.
+
+```bash
+python3 torch_train.py   # see config.py for the topology and traffic files
+```
+
+The original README follows.
+
+---
+
 # CFR-RL: Traffic Engineering with Reinforcement Learning in SDN
 
 This is a Tensorflow implementation of CFR-RL as described in our paper:
