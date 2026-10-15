@@ -5,13 +5,13 @@ TensorFlow to **PyTorch** as the base for research on making the policy generali
 topologies.
 
 - `torch_model.py`: the policy and actor-critic models in PyTorch.
-- `torch_train.py`: distributed training with `torch.multiprocessing`: a central agent and one
-  worker per CPU core that exchange weights and experience through queues. Metrics are logged to
+- `torch_train.py`: distributed training with `torch.multiprocessing`: a central agent and a pool of
+  workers (by default one fewer than the CPU count) that exchange weights and experience through queues. Metrics are logged to
   Weights & Biases.
 - `torch_ckpts/`, `model_weights.pth`: trained checkpoints for Abilene.
 
 The ongoing generalization work (actor-critic updates, reward changes, imitation learning, layer
-normalization) is on the [`Frontera2`](../../tree/Frontera2) branch.
+normalization) is on the [`Frontera2`](https://github.com/CarlosMari/CFR-RL/tree/Frontera2) branch.
 
 ```bash
 python3 torch_train.py   # see config.py for the topology and traffic files
